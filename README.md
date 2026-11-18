@@ -36,7 +36,7 @@ Depois abra o Claude Code **dentro da pasta `Aprendizado`** e digite:
 ## Uso
 
 - **Manual:** no Claude Code, na pasta do repositório: `/clipar-gta-br`
-- **Uma live específica:** `corta essa live https://www.twitch.tv/videos/... em português`
+- **Uma live específica:** `/clipar-gta-br https://www.twitch.tv/videos/...` (aceita vários links; funciona com YouTube e Kick, mesmo fora da lista)
 - **Automático (todo dia):**
   - Mac/Linux: `crontab -e` e adicione `17 4 * * * /caminho/Aprendizado/clipper-gta-br/rodar_automatico.sh`
   - Windows: veja o comando `schtasks` no topo de `rodar_automatico.ps1`

@@ -17,6 +17,10 @@ Se `CLIPPER/SKILL.md` não existir ou não mencionar "Portuguese", pare e diga p
 Se `~/.ai-stream-clipper/config.json` não existir, rode `CLIPPER/scripts/clipper.py setup` primeiro.
 
 ## 2. Achar lives novas
+**Se o usuário passou um ou mais links** (ex.: `/clipar-gta-br https://www.twitch.tv/videos/123`), use só
+esses links, mesmo que não estejam em `streamers.json` ou já tenham sido processados, e pule para o passo 3.
+Se ele pediu um número de clipes ("só 1 corte"), use `--top N` (1 a 3).
+Sem links:
 ```
 python -I REPO/clipper-gta-br/novas_lives.py
 ```
