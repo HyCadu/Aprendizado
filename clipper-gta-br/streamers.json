@@ -1,0 +1,15 @@
+{
+ "_leia": "Lista de canais monitorados. Confira os links com: python -I clipper-gta-br/novas_lives.py --verificar. Use 'ativo': false para pausar um canal. 'so_gta': true só aceita lives cujo título tenha uma das palavras_gta.",
+ "max_lives_por_rodada": 2,
+ "dias_para_tras": 3,
+ "duracao_minima_min": 30,
+ "palavras_gta": ["gta", "rp", "roleplay", "cidade", "complexo", "vice city"],
+ "streamers": [
+  {"nome": "Coringa (LOUD)",  "url": "https://www.twitch.tv/loud_coringa",   "ativo": true, "so_gta": true},
+  {"nome": "Paulinho o LOKO", "url": "https://www.twitch.tv/paulinholokobr", "ativo": true, "so_gta": true},
+  {"nome": "Alanzoka",        "url": "https://www.twitch.tv/alanzoka",       "ativo": true, "so_gta": true},
+  {"nome": "Luquet4",         "url": "https://www.twitch.tv/luquet4",        "ativo": true, "so_gta": true},
+  {"nome": "Gabepeixe",       "url": "https://www.twitch.tv/gabepeixe",      "ativo": true, "so_gta": true},
+  {"nome": "JonVlogs",        "url": "https://www.twitch.tv/jonvlogs",       "ativo": true, "so_gta": true}
+ ]
+}
