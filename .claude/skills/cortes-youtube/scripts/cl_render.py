@@ -382,7 +382,7 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             sync["status"] = "FAIL" if "FAIL" in (sa["status"], sc_["status"]) else (
                 "ok" if sa["status"] == "ok" and sc_["status"] == "ok" else "check")
             contact_sheet(mp4, cdir / "sheet.jpg", dur)
-            pt = post_texts(p, meta, lang)
+            pt = post_texts(p, meta, cap_lang if k in tr_lines else lang)   # crédito e tags no idioma da legenda
             write_json(cdir / "post.json", pt)
             write_text(cdir / "post.md", post_markdown(p, pt, name))
             secs = round(x["secs"] + ct(), 1)

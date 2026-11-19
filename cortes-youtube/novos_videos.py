@@ -1,4 +1,4 @@
-"""Acha vídeos novos de GTA (até 60 min) dos canais em canais.json que ainda não viraram cortes.
+"""Acha vídeos novos de GTA dos canais em canais.json que ainda não viraram cortes.
 
 Uso (rode com python -I; precisa do yt-dlp que o setup da skill instala):
   python -I cortes-youtube/novos_videos.py              -> JSON com os vídeos pendentes (mais novos primeiro)
@@ -94,7 +94,7 @@ def item(nome: str, e: dict, maximo: int) -> dict:
 def pendentes(cfg: dict, estado: dict, buscar=listar_videos) -> list:
     limite_ts = time.time() - float(cfg.get("dias_para_tras", 7)) * 86400
     dmin = float(cfg.get("duracao_minima_min", 3)) * 60
-    dmax = float(cfg.get("duracao_maxima_min", 60)) * 60
+    dmax = float(cfg.get("duracao_maxima_min") or 0) * 60 or float("inf")   # 0 / vazio = sem limite
     palavras = cfg.get("palavras_gta", ["gta"])
     maximo = int(cfg.get("clipes_por_video", 5))
     achados = []
@@ -118,7 +118,7 @@ def pendentes(cfg: dict, estado: dict, buscar=listar_videos) -> list:
                 continue
             if c.get("so_gta") and not eh_gta(e.get("title", ""), palavras):
                 continue
-            achados.append(item(c["nome"], e, maximo))
+            achados.append(dict(item(c["nome"], e, maximo), legenda=c.get("legenda") or cfg.get("legenda", "pt")))
     achados.sort(key=lambda x: -(x["timestamp"] or 0))
     return achados[: int(cfg.get("max_videos_por_rodada", 2))]
 
@@ -129,8 +129,8 @@ def conferir_link(url: str, cfg: dict, estado: dict, buscar=info_video) -> dict:
     r = item(e.get("channel") or e.get("uploader") or "?", e, int(cfg.get("clipes_por_video", 5)))
     avisos = []
     dur = float(e.get("duration") or 0)
-    if dur > float(cfg.get("duracao_maxima_min", 60)) * 60:
-        avisos.append("mais de 60 min: use a ai-stream-clipper ou --force-long")
+    if dur > 90 * 60:
+        avisos.append(f"vídeo longo ({round(dur / 60)} min): a transcrição demora mais e a leitura é econômica (~40%)")
     if e.get("live_status") in ("is_live", "is_upcoming"):
         avisos.append("ainda ao vivo / agendado: espere terminar")
     if r["url"] in estado or url in estado:

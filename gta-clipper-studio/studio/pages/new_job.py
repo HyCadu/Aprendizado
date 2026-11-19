@@ -78,7 +78,7 @@ class NewJob(Page):
         v1.addLayout(row)
         hint = QHBoxLayout()
         self.hint_ic = Icon("info", 13, T.MUTED)
-        self.hint = label("Aceita vídeos do YouTube (até 60 min no modo vídeo) e VODs da Twitch.", "Dim")
+        self.hint = label("Aceita vídeos do YouTube (qualquer duração) e VODs da Twitch.", "Dim")
         hint.addWidget(self.hint_ic)
         hint.addWidget(self.hint, 1)
         v1.addLayout(hint)
@@ -92,7 +92,7 @@ class NewJob(Page):
         v2.addWidget(label("2. Origem", "SectionTitle"))
         prow = QHBoxLayout()
         prow.setSpacing(14)
-        self.p_yt = PlatformCard("video", "YouTube", "Vídeo editado de gameplay, até 60 min · até 5 cortes\n"
+        self.p_yt = PlatformCard("video", "YouTube", "Vídeo de gameplay, qualquer duração · até 5 cortes\n"
                                  "skill cortes-youtube", "#ff4e45")
         self.p_tw = PlatformCard("sync", "Twitch", "Live/VOD longa com facecam · até 3 cortes\n"
                                  "skill clipar-gta-br", T.PURPLE)
@@ -142,7 +142,7 @@ class NewJob(Page):
         sec.setSpacing(4)
         for ic, txt in (("shield", "Nada é publicado automaticamente: os vídeos ficam só no seu computador."),
                         ("check", "Usa as skills e scripts que já existem; nenhum arquivo é apagado."),
-                        ("clock", "Com placa NVIDIA: ~3-5 min por vídeo de até 60 min, ~10-15 min por live de 4 h.")):
+                        ("clock", "Com placa NVIDIA: ~3-5 min por vídeo de 60 min, ~10-15 min por live de 4 h.")):
             r = QHBoxLayout()
             r.addWidget(Icon(ic, 13, T.ORANGE))
             r.addWidget(label(txt, "Dim"), 1)
@@ -188,7 +188,7 @@ class NewJob(Page):
         found = detect_platform(text)
         if not text:
             self.hint_ic.set("info", T.MUTED)
-            self.hint.setText("Aceita vídeos do YouTube (até 60 min no modo vídeo) e VODs da Twitch.")
+            self.hint.setText("Aceita vídeos do YouTube (qualquer duração) e VODs da Twitch.")
         elif found:
             ok, msg = validate_link(text, self.platform())
             if ok:

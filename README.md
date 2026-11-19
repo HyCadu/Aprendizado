@@ -1,6 +1,6 @@
 # Cortes de GTA em português
 
-Transforma **lives** (Twitch, YouTube, Kick) e **vídeos do YouTube de até 60 min** em clipes verticais
+Transforma **lives** (Twitch, YouTube, Kick) e **vídeos do YouTube de qualquer duração** em clipes verticais
 prontos para Shorts, TikTok e Reels: legenda palavra por palavra, título na tela e texto do post com
 hashtags, tudo em português. Quem escolhe os melhores momentos é o Claude.
 
@@ -75,15 +75,19 @@ Depois digite um destes comandos na caixa do Claude:
 
 | Quero cortar... | Digite |
 |---|---|
-| Um vídeo do YouTube (até 60 min) | `/cortes-youtube LINK` |
+| Um vídeo do YouTube (qualquer duração) | `/cortes-youtube LINK` |
 | Um vídeo, com menos clipes (1 a 5) | `/cortes-youtube LINK --top 3` |
+| Um vídeo, já dizendo o idioma da legenda | `/cortes-youtube LINK --legenda en` (ou `pt`) |
 | Uma live que já terminou | `/clipar-gta-br LINK` |
 | As lives novas dos streamers da lista | `/clipar-gta-br` |
 | Uma live gringa (inglês, espanhol...) com legenda em português | `corta essa live LINK com legenda em português` |
 
-**Vídeos e lives gringos** saem com a legenda traduzida para o português, no mesmo estilo palavra por
-palavra. O Claude traduz só as frases dos clipes escolhidos. Se quiser a legenda no idioma original, peça:
-`deixa a legenda em inglês`. Já tinha instalado a skill de lives antes? Rode o passo 5 de novo para atualizar.
+**Idioma da legenda:** a cada vídeo do YouTube o Claude pergunta se a legenda sai em **português** ou em
+**inglês**, e traduz nos dois sentidos: vídeo gringo com legenda em português, ou vídeo brasileiro com
+legenda em inglês. Hook, título e post saem no mesmo idioma da legenda. O Claude traduz só as frases dos
+clipes escolhidos, no mesmo estilo palavra por palavra. Sem ninguém para responder (automático, GTA Clipper
+Studio) a legenda sai em português; no automático, cada canal pode ter `"legenda": "en"` em `canais.json`.
+**Lives gringas** saem com legenda em português. Já tinha instalado a skill de lives antes? Rode o passo 5 de novo.
 
 Troque `LINK` pelo endereço do vídeo, por exemplo `https://www.youtube.com/watch?v=abc123`.
 Quando o Claude pedir permissão, escolha **Yes**.
@@ -94,6 +98,7 @@ Quando o Claude pedir permissão, escolha **Yes**.
 |---|---|---|
 | Vídeo de 20 min | ~3 min | ~10 a 15 min |
 | Vídeo de 60 min | ~5 min | ~20 a 30 min |
+| Vídeo de 3 horas | ~10 min | ~1 a 1,5 hora |
 | Live de 4 horas | ~10 a 15 min | ~1 a 2,5 horas |
 
 A parte mais demorada é a transcrição. Para ver o andamento, pergunte ao Claude: `como está a transcrição?`
@@ -174,7 +179,7 @@ Para cortar sem abrir o Claude, também dá para passar o link direto no script:
 | `destination path 'Aprendizado' already exists` | Já foi baixado. Digite `cd Aprendizado` e siga. |
 | O Claude não conhece `/cortes-youtube` ou `/clipar-gta-br` | Você abriu o Claude fora da pasta. Digite `/exit`, depois `cd $HOME\Documents\Aprendizado` e `claude`. |
 | "YouTube asks to sign in" ou "not a bot" | Entre no YouTube pelo **Firefox** e diga ao Claude: `usa meus cookies do Firefox`. Ou espere 1 hora. |
-| "esta skill é para vídeos de até 60 min" | Para vídeo longo, use `/clipar-gta-br LINK`. |
+| A legenda saiu sem sentido / em outro idioma | O Claude errou o idioma falado no vídeo. Diga: `o vídeo é em inglês, refaz a transcrição`. |
 | "This stream is still live" | A live ainda não acabou. Espere o vídeo aparecer no canal. |
 | Muito lento | Normal sem placa NVIDIA. Deixe rodando. |
 | O rosto saiu cortado | Diga ao Claude: `o rosto ficou errado no clipe 2, arruma`. |

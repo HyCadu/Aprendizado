@@ -1,8 +1,8 @@
-"""Cortes YouTube - clone do AI Stream Clipper para vídeos editados de gameplay de GTA (até 60 min).
+"""Cortes YouTube - clone do AI Stream Clipper para vídeos de gameplay de GTA (qualquer duração).
 
 Commands (run with: python -I scripts/clipper.py <command> ...):
   setup   [--no-install] [--cpu] [--cookies-from-browser firefox]
-  prepare SOURCE [--out DIR] [--lang auto|en|ru|pt] [--top 5] [--smart] [--force-long]
+  prepare SOURCE [--out DIR] [--lang auto|en|ru|pt] [--top 5] [--smart | --read-all]
   check   JOB [--top 3]
   translate JOB [--to pt]   (vídeo estrangeiro: frases para o Claude traduzir -> translation.json)
   render  JOB [--only 1,3] [--original-captions]
@@ -23,7 +23,7 @@ from cl_common import (DEFAULT_OUT, Timer, fmt_dur, fmt_ts, log, read_json, slug
                        write_json)
 
 MAX_TOP = 5  # até 5 clipes por vídeo
-MAX_MIN = 62  # vídeos de até 60 min (+2 de folga)
+READ_ALL_MIN = 62  # até ~60 min lê todos os trechos; acima disso, modo econômico (~40%) se não pedir --read-all
 
 
 def job_dir_for(meta: dict, out: Path) -> Path:
@@ -42,9 +42,6 @@ def cmd_prepare_one(src, args) -> Path:
     started = time.time()
     log(f"== prepare: {src}")
     meta = cl_fetch.probe_source(src, args.cookies_from_browser, args.cookies)
-    if meta.get("duration") and meta["duration"] > MAX_MIN * 60 and not args.force_long:
-        raise SystemExit(f"O vídeo tem {fmt_dur(meta['duration'])}: esta skill é para vídeos de até 60 min. "
-                         "Para lives longas use a ai-stream-clipper (ou passe --force-long).")
     job = job_dir_for(meta, Path(args.out).expanduser().resolve())
     job.mkdir(parents=True, exist_ok=True)
     (job / "media").mkdir(exist_ok=True)
@@ -74,7 +71,13 @@ def cmd_prepare_one(src, args) -> Path:
     meta["whisper"] = {k: tinfo.get(k) for k in ("device", "model", "words")}
     cl_signals.compute(job)
     write_json(job / "job.json", meta)
-    n = cl_chunks.build(job, args.chunk_minutes, not args.smart)
+    # vídeo de até ~60 min: lê tudo (barato); mais longo: modo econômico, a menos que peça --read-all
+    longo = (meta.get("duration") or 0) > READ_ALL_MIN * 60
+    read_all = args.read_all or not (args.smart or longo)
+    if longo and not args.read_all and not args.smart:
+        log(f"  vídeo de {fmt_dur(meta['duration'])}: modo econômico (~40% dos trechos); --read-all lê tudo")
+    minutes = args.chunk_minutes or (10 if longo else 5)   # vídeo longo: trechos de 10 min, índice menor
+    n = cl_chunks.build(job, minutes, read_all)
     meta["chunks"] = n
     meta["timings"]["prepare_finished"] = time.time()
     meta["timings"]["prepare_sec"] = round(t(), 1)
@@ -125,7 +128,11 @@ def cmd_translate(args):
     job = Path(args.job).expanduser().resolve()
     meta = read_json(job / "job.json") or {}
     if meta.get("language") == args.to:
-        log(f"O vídeo já está em '{args.to}': não precisa traduzir.")
+        old = job / "translation.json"
+        if old.exists():   # tradução de um pedido anterior (outro idioma): o render não pode usar
+            old.replace(job / "translation.old.json")
+            log("  translation.json antigo renomeado para translation.old.json")
+        log(f"O vídeo já está em '{args.to}': a legenda sai no idioma original, sem tradução.")
         return 0
     try:
         todo = cl_translate.prepare(job, args.to)
@@ -195,10 +202,11 @@ def main():
     p.add_argument("--lang", default="auto", help="auto, en, ru, pt (language of the stream)")
     p.add_argument("--top", type=int, default=MAX_TOP, choices=range(1, MAX_TOP + 1), metavar="1-5",
                    help="clipes por vídeo (1-5)")
-    p.add_argument("--chunk-minutes", type=int, default=5)
+    p.add_argument("--chunk-minutes", type=int, default=0, help="padrão: 5 (10 em vídeo de mais de 60 min)")
     p.add_argument("--smart", action="store_true",
-                   help="ler só ~40%% dos trechos (padrão: ler o vídeo inteiro, barato em vídeos de até 60 min)")
-    p.add_argument("--force-long", action="store_true", help="aceitar vídeo com mais de 60 min")
+                   help="ler só ~40%% dos trechos (padrão: tudo em vídeo de até 60 min, ~40%% acima disso)")
+    p.add_argument("--read-all", action="store_true", help="ler todos os trechos, mesmo em vídeo longo")
+    p.add_argument("--force-long", action="store_true", help=argparse.SUPPRESS)  # antigo, não faz mais nada
     p.add_argument("--cpu", action="store_true")
     cookies(p)
 
@@ -208,7 +216,7 @@ def main():
 
     p = sub.add_parser("translate")
     p.add_argument("job")
-    p.add_argument("--to", default="pt", help="language of the captions (default pt = pt-BR)")
+    p.add_argument("--to", default="pt", choices=["pt", "en"], help="idioma da legenda: pt (pt-BR) ou en")
 
     p = sub.add_parser("render")
     p.add_argument("job")

@@ -81,8 +81,8 @@ def load_model(device, compute, name):
     return WhisperModel(name, device=device, compute_type=compute)
 
 
-def detect_language(model, audio, sr=16000):
-    """Vote over 5 windows from the middle of the stream (streams often start with music)."""
+def language_votes(model, audio, sr=16000) -> dict:
+    """Share of the vote of each language over 5 windows of 30 s (sums to 1; {} if no speech)."""
     n = len(audio)
     votes = {}
     for frac in (0.2, 0.35, 0.5, 0.65, 0.8):
@@ -97,9 +97,14 @@ def detect_language(model, audio, sr=16000):
         except Exception:
             continue
         votes[lang] = votes.get(lang, 0) + prob
-    if not votes:
-        return "en"
-    return max(votes, key=votes.get)
+    tot = sum(votes.values())
+    return {k: v / tot for k, v in votes.items()} if tot else {}
+
+
+def detect_language(model, audio, sr=16000):
+    """Vote over 5 windows from the middle of the stream (streams often start with music)."""
+    votes = language_votes(model, audio, sr)
+    return max(votes, key=votes.get) if votes else "en"
 
 
 def is_hallucination(text: str, lang: str) -> bool:
@@ -136,8 +141,16 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
             raise
     audio = read_wav(wav)
     dur = len(audio) / 16000.0
-    lang = language if language and language != "auto" else detect_language(model, audio)
-    log(f"  whisper: language = {lang}")
+    # Detecta sempre pelo áudio (5 janelas de 30 s): com --lang forçado serve para pegar palpite errado.
+    votes = language_votes(model, audio)
+    top = max(votes, key=votes.get) if votes else None
+    forced = language if language and language != "auto" else None
+    lang = forced or top or "en"
+    seen = f"{top} {votes[top] * 100:.0f}%" if top else "sem fala clara"
+    log(f"  whisper: language = {lang} (detectado: {seen})")
+    if forced and top and top != forced and votes[top] >= 0.6 and votes.get(forced, 0) < 0.25:
+        log(f"  WARN: o áudio parece ser '{top}' ({votes[top] * 100:.0f}%), não '{forced}'. "
+            f"Se o vídeo é mesmo em {top}, rode o prepare de novo com --lang {top}.")
     batched = BatchedInferencePipeline(model=model)
     bs = 16 if device == "cuda" else 4
     segments, info = batched.transcribe(audio, language=lang, word_timestamps=True, batch_size=bs,
@@ -177,7 +190,8 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
     write_json(tdir / "words.json", words)
     write_json(tdir / "segments.json", segs)
     write_text(tdir / "transcript.txt", "\n".join(f"[{fmt_ts(s['s'])}] {s['text']}" for s in segs))
-    res = {"language": lang, "device": device, "model": name, "seconds": round(t(), 1),
+    res = {"language": lang, "detected": {k: round(v, 3) for k, v in sorted(votes.items(), key=lambda x: -x[1])[:3]},
+           "device": device, "model": name, "seconds": round(t(), 1),
            "duration": dur, "words": len(words), "segments": len(segs)}
     write_json(tdir / "info.json", res)
     log(f"  whisper: done, {len(words)} words in {t():.0f} s")

@@ -199,7 +199,7 @@ index 83911f0..bb17e87 100644
      return t[:maxlen].strip("-") or "clip"
  
 diff --git a/scripts/cl_render.py b/scripts/cl_render.py
-index 3903596..a7f5a30 100644
+index 3903596..210ddc5 100644
 --- a/scripts/cl_render.py
 +++ b/scripts/cl_render.py
 @@ -9,7 +9,8 @@ from pathlib import Path
@@ -398,7 +398,8 @@ index 3903596..a7f5a30 100644
 +            sync["status"] = "FAIL" if "FAIL" in (sa["status"], sc_["status"]) else (
 +                "ok" if sa["status"] == "ok" and sc_["status"] == "ok" else "check")
              contact_sheet(mp4, cdir / "sheet.jpg", dur)
-             pt = post_texts(p, meta, lang)
+-            pt = post_texts(p, meta, lang)
++            pt = post_texts(p, meta, cap_lang if k in tr_lines else lang)   # crédito e tags no idioma da legenda
              write_json(cdir / "post.json", pt)
              write_text(cdir / "post.md", post_markdown(p, pt, name))
              secs = round(x["secs"] + ct(), 1)
@@ -433,11 +434,11 @@ index 3903596..a7f5a30 100644
      write_text(job / "report.md", "\n".join(lines) + "\n")
 diff --git a/scripts/cl_translate.py b/scripts/cl_translate.py
 new file mode 100644
-index 0000000..b68f8c6
+index 0000000..7cd4f08
 --- /dev/null
 +++ b/scripts/cl_translate.py
-@@ -0,0 +1,125 @@
-+"""Translated captions (e.g. an English video with pt-BR captions).
+@@ -0,0 +1,134 @@
++"""Translated captions: an English video with pt-BR captions, or a Brazilian video with English captions.
 +
 +Flow:
 +  1. `clipper.py translate JOB` splits the speech of every checked pick into short phrases with exact
@@ -457,7 +458,15 @@ index 0000000..b68f8c6
 +GAP_SPLIT = 0.7      # silence that always starts a new phrase (s)
 +MAX_WORDS = 14
 +MAX_SECS = 5.0
-+LANG_NAMES = {"pt": "português do Brasil (pt-BR)", "en": "English", "es": "español", "ru": "русский"}
++LANG_NAMES = {"pt": "português do Brasil (pt-BR)", "en": "inglês (English)", "es": "espanhol", "ru": "russo"}
++# Como traduzir, por idioma de destino (vai no topo do translate.md).
++STYLE = {
++    "pt": ("Tradução natural e curta, como legenda de canal de cortes brasileiro (\"Puta merda!\", \"Bora, "
++           "porra!\", \"Esse jogo é de outra geração\"): adapte gíria e palavrão, não traduza palavra por palavra."),
++    "en": ("Write natural spoken English, the way a US clip channel captions a stream (\"Bro, no way!\", "
++           "\"Let's go!\", \"This game is next gen\"): adapt Brazilian slang and swearing (mano = bro, porra = "
++           "damn / f*ck, caralho = holy sh*t, tá ligado = you know), never word for word."),
++}
 +
 +
 +def clip_words(words, a, b):
@@ -500,8 +509,9 @@ index 0000000..b68f8c6
 +          f"De {LANG_NAMES.get(src_lang, src_lang)} para {LANG_NAMES.get(to, to)}.", "",
 +          "Escreva `translation.json` com o mesmo formato de `translation.todo.json`: em cada clipe, "
 +          "`lines` tem exatamente uma linha traduzida por frase, na mesma ordem (pode ser \"\" para "
-+          "barulho / frase sem sentido). Tradução natural e curta, como legenda de canal de cortes: "
-+          "adapte gíria e palavrão, não traduza palavra por palavra. Mantenha nomes próprios.", ""]
++          "barulho / frase sem sentido).", "",
++          STYLE.get(to, STYLE["pt"]) + " Mantenha nomes próprios. Cada linha só aparece enquanto a frase "
++          "original é falada: frase de 1 s pede 2-4 palavras.", ""]
 +    for p in sorted(chk["picks"], key=lambda q: q["order"]):
 +        ph = phrases(clip_words(words, p["start"], p["end"]))
 +        todo["clips"][str(p["order"])] = {"key": _key(p), "src": [x["src"] for x in ph], "lines": []}
@@ -563,7 +573,7 @@ index 0000000..b68f8c6
 +            t += d
 +    return out
 diff --git a/scripts/clipper.py b/scripts/clipper.py
-index 8474dfd..08a26e2 100644
+index 8474dfd..973936a 100644
 --- a/scripts/clipper.py
 +++ b/scripts/clipper.py
 @@ -2,9 +2,10 @@
@@ -579,7 +589,7 @@ index 8474dfd..08a26e2 100644
    report  JOB
    sheet   VIDEO.mp4
  SOURCE = YouTube / Twitch / Kick VOD link or a local video file.
-@@ -115,6 +116,25 @@ def cmd_check(args):
+@@ -115,6 +116,29 @@ def cmd_check(args):
      return 0 if not errors else 2
  
  
@@ -588,7 +598,11 @@ index 8474dfd..08a26e2 100644
 +    job = Path(args.job).expanduser().resolve()
 +    meta = read_json(job / "job.json") or {}
 +    if meta.get("language") == args.to:
-+        log(f"O vídeo já está em '{args.to}': não precisa traduzir.")
++        old = job / "translation.json"
++        if old.exists():   # tradução de um pedido anterior (outro idioma): o render não pode usar
++            old.replace(job / "translation.old.json")
++            log("  translation.json antigo renomeado para translation.old.json")
++        log(f"O vídeo já está em '{args.to}': a legenda sai no idioma original, sem tradução.")
 +        return 0
 +    try:
 +        todo = cl_translate.prepare(job, args.to)
@@ -605,7 +619,7 @@ index 8474dfd..08a26e2 100644
  def cmd_render(args):
      import cl_render
      only = [int(x) for x in args.only.split(",")] if args.only else None
-@@ -122,7 +142,7 @@ def cmd_render(args):
+@@ -122,7 +146,7 @@ def cmd_render(args):
      log(f"== render: {job.name}")
      try:
          meta = cl_render.render_job(job, args.cookies_from_browser, args.cookies, only, args.facecam,
@@ -614,7 +628,7 @@ index 8474dfd..08a26e2 100644
      except SystemExit as e:
          log(f"  FAILED: {e}")
          return 1
-@@ -168,7 +188,7 @@ def main():
+@@ -168,7 +192,7 @@ def main():
      p = sub.add_parser("prepare")
      p.add_argument("source", help="one stream link or local video file")
      p.add_argument("--out", default=str(DEFAULT_OUT))
@@ -623,13 +637,13 @@ index 8474dfd..08a26e2 100644
      p.add_argument("--top", type=int, default=MAX_TOP, choices=range(1, MAX_TOP + 1), metavar="1-3",
                     help="clips per stream (1-3)")
      p.add_argument("--chunk-minutes", type=int, default=10)
-@@ -180,12 +200,21 @@ def main():
+@@ -180,12 +204,21 @@ def main():
      p.add_argument("job")
      p.add_argument("--top", type=int, default=None, choices=range(1, MAX_TOP + 1), metavar="1-3")
  
 +    p = sub.add_parser("translate")
 +    p.add_argument("job")
-+    p.add_argument("--to", default="pt", help="language of the captions (default pt = pt-BR)")
++    p.add_argument("--to", default="pt", choices=["pt", "en"], help="caption language: pt (pt-BR) or en")
 +
      p = sub.add_parser("render")
      p.add_argument("job")
@@ -645,7 +659,7 @@ index 8474dfd..08a26e2 100644
      cookies(p)
  
      p = sub.add_parser("report")
-@@ -198,7 +227,7 @@ def main():
+@@ -198,7 +231,7 @@ def main():
      if args.cmd == "setup":
          import cl_setup
          return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
