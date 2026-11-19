@@ -458,19 +458,43 @@ class NeonProgress(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._value = 0.0
         self._phase = 0.0
-        self.active = False
+        self._active = False
         self.state = "idle"  # idle | run | ok | error | cancel
         self._anim = QPropertyAnimation(self, b"value", self)
         self._anim.setDuration(600)
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
         self._timer = QTimer(self)
+        self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(33)
+
+    # o brilho correndo na barra só anima com processamento ativo e a barra visível
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    @active.setter
+    def active(self, v: bool):
+        self._active = bool(v)
+        self._sync_timer()
+        self.update()
+
+    def _sync_timer(self):
+        if self._active and self.isVisible():
+            self._timer.start()
+        else:
+            self._timer.stop()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._sync_timer()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._sync_timer()
 
     def _tick(self):
-        if self.active:
-            self._phase = (self._phase + 0.012) % 1.0
-            self.update()
+        self._phase = (self._phase + 0.012) % 1.0
+        self.update()
 
     def get_value(self):
         return self._value
@@ -533,18 +557,35 @@ class PulseDot(QWidget):
         self.t = 0.0
         self.pulsing = True
         self._timer = QTimer(self)
+        self._timer.setInterval(40)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(40)
+
+    def _sync_timer(self):
+        # só anima pulsando e visível: parado/escondido não acorda a cada 40 ms nem repinta o fundo
+        if self.pulsing and self.isVisible():
+            self._timer.start()
+        else:
+            self._timer.stop()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._sync_timer()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._sync_timer()
 
     def set_color(self, c: str, pulsing: bool = True):
         self.color = QColor(c)
         self.pulsing = pulsing
+        if not pulsing:
+            self.t = 0.0
+        self._sync_timer()
         self.update()
 
     def _tick(self):
-        if self.pulsing:
-            self.t = (self.t + 0.03) % 1.0
-            self.update()
+        self.t = (self.t + 0.03) % 1.0
+        self.update()
 
     def paintEvent(self, _):
         p = QPainter(self)
@@ -570,8 +611,16 @@ class Spinner(QWidget):
         self.color = QColor(color)
         self.angle = 0
         self._timer = QTimer(self)
+        self._timer.setInterval(16)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(16)
+
+    def showEvent(self, e):   # gira só enquanto aparece
+        super().showEvent(e)
+        self._timer.start()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._timer.stop()
 
     def _tick(self):
         self.angle = (self.angle + 7) % 360

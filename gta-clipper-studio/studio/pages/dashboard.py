@@ -45,10 +45,10 @@ class StatusRow(QWidget):
 
     def set(self, ok: bool | None, detail: str):
         self.detail.setText(detail)
-        if ok is None:
+        if ok is None:   # pulsa só enquanto a checagem está rodando
             self.dot.set_color(T.MUTED, True)
-        else:
-            self.dot.set_color(T.GREEN if ok else T.RED, pulsing=bool(ok))
+        else:            # resultado: ponto parado (o painel ocioso não fica animando)
+            self.dot.set_color(T.GREEN if ok else T.RED, pulsing=False)
 
 
 class Dashboard(Page):
