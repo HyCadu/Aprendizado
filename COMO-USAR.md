@@ -28,6 +28,9 @@ Usa Mac? Pule para [Passo a passo no Mac](#passo-a-passo-no-mac).
 Abre uma janela azul ou preta com um texto parecido com `PS C:\Users\SeuNome>`. É ali que você digita
 os comandos deste guia.
 
+⚠️ **Tem que ter o `PS` no começo.** Se a linha começa só com `C:\Users\SeuNome>` (sem `PS`), você abriu o
+**Prompt de Comando (cmd)**, que é outro programa: feche e abra o **Windows PowerShell**.
+
 **Para colar um comando:** copie aqui, clique na janela do PowerShell e aperte **o botão direito do mouse**
 (ou Ctrl+V). Depois aperte **Enter**.
 
@@ -246,7 +249,9 @@ Use o app **Terminal** (aperte Cmd+Espaço, digite *Terminal*, Enter) no lugar d
 | O que apareceu | O que fazer |
 |---|---|
 | `python` "não é reconhecido" ou abre a Microsoft Store | Reinstale o Python marcando **"Add python.exe to PATH"** (Passo 1). Depois feche e abra o PowerShell. |
-| `git` ou `claude` "não é reconhecido" | Feche e abra o PowerShell. Se continuar, repita o passo de instalação desse programa. |
+| A linha começa com `C:\Users\...>` sem o `PS` | Você está no Prompt de Comando (cmd). Feche e abra o **Windows PowerShell**. |
+| `git` "não é reconhecido" | Feche e abra o PowerShell. Se continuar, repita o Passo 2. |
+| `claude` "não é reconhecido" | No PowerShell, digite `Test-Path $HOME\.local\bin\claude.exe`. Se der **False**, repita o Passo 3. Se der **True**, cole `[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path","User") + ";$HOME\.local\bin", "User")`, feche e abra o PowerShell. |
 | "a execução de scripts foi desabilitada neste sistema" | Você esqueceu o começo `powershell -ExecutionPolicy Bypass -File` do comando. Copie o comando inteiro de novo. |
 | `fatal: destination path 'Aprendizado' already exists` | O projeto já foi baixado antes. Só digite `cd Aprendizado` e siga. |
 | O Claude diz que **não conhece** `/cortes-youtube` ou `/clipar-gta-br` | Você abriu o Claude fora da pasta. Saia (`/exit`), digite `cd $HOME\Documents\Aprendizado` e abra `claude` de novo. |
