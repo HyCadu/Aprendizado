@@ -7,12 +7,15 @@ $ErrorActionPreference = "Continue"
 $Repo   = "https://github.com/arcticloud/ai-stream-clipper"
 $Commit = "b3546b7e1ce3347dd253a627ccb9e25e5ae32f7a"   # versão em que o patch foi testado
 $Dest   = Join-Path $env:USERPROFILE ".claude\skills\ai-stream-clipper"
-$Patch  = Join-Path $PSScriptRoot "ai-stream-clipper-pt-br.patch"
+$PatchOrig = Join-Path $PSScriptRoot "ai-stream-clipper-pt-br.patch"
+# O Git for Windows pode ter convertido o .patch para CRLF, e aí ele não aplica: usa uma cópia só com LF.
+$Patch = Join-Path $env:TEMP "ai-stream-clipper-pt-br.patch"
+[IO.File]::WriteAllText($Patch, ([IO.File]::ReadAllText($PatchOrig) -replace "`r`n", "`n"))
 
 if (-not (Test-Path (Join-Path $Dest ".git"))) {
     Write-Host "Clonando $Repo em $Dest ..."
     New-Item -ItemType Directory -Force -Path (Split-Path $Dest) | Out-Null
-    git clone $Repo $Dest
+    git -c core.autocrlf=false clone $Repo $Dest
     if ($LASTEXITCODE -ne 0) { Write-Host "ERRO: não consegui baixar a skill. Confira a internet e se o Git está instalado."; exit 1 }
 }
 

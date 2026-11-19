@@ -1,0 +1,4 @@
+# Mantém finais de linha LF mesmo no Git for Windows (core.autocrlf=true).
+# O .patch com CRLF não aplica; scripts .sh com CRLF quebram no bash.
+*.patch -text
+*.sh    text eol=lf
