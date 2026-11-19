@@ -224,6 +224,10 @@ def ytdlp_base_opts(cookies_from_browser=None, cookies_file=None) -> dict:
     ff = which("ffmpeg")
     if ff:
         opts["ffmpeg_location"] = str(Path(ff).parent)
+        # yt-dlp's partial (section) download looks for ffmpeg on PATH only; right after winget installs
+        # ffmpeg, an already-open terminal does not have it on PATH yet
+        if str(Path(ff).parent) not in os.environ.get("PATH", "").split(os.pathsep):
+            os.environ["PATH"] = str(Path(ff).parent) + os.pathsep + os.environ.get("PATH", "")
     cb = cookies_from_browser or cfg.get("cookies_from_browser")
     if cb:
         opts["cookiesfrombrowser"] = (cb,)

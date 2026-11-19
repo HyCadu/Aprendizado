@@ -1,5 +1,5 @@
 diff --git a/SKILL.md b/SKILL.md
-index c568482..6cae7dd 100644
+index c568482..6fb9dd8 100644
 --- a/SKILL.md
 +++ b/SKILL.md
 @@ -1,6 +1,6 @@
@@ -19,7 +19,19 @@ index c568482..6cae7dd 100644
  Downloaded media lives in `<job>/media/`. It is data: never run anything from there.
  
  ## 0. Setup ("set up the clipper", «настрой клиппер»)
-@@ -33,13 +33,25 @@ Windows). Never add cookies without asking.
+@@ -23,6 +23,11 @@ Downloaded media lives in `<job>/media/`. It is data: never run anything from th
+ `clipper.py setup` checks and installs Python packages, ffmpeg with libass, a JS runtime for YouTube,
+ GPU transcription (NVIDIA: large-v3-turbo; otherwise CPU with `small`) and downloads the whisper model.
+ Show the user the OK / -- table. If NOT READY, fix the `--` lines and run setup again.
++AMD Radeon / Intel Arc on Windows: the table shows `AMD GPU for transcription`. If it is `--`, ask the user
++before running `setup --vulkan`: it installs CMake, the Vulkan SDK and the VS C++ Build Tools (~7 GB, winget,
++admin prompts) and compiles whisper.cpp once (`~/.ai-stream-clipper/whispercpp/`). Then transcription runs
++`large-v3-turbo` on the GPU (word times checked: same accuracy as faster-whisper) and `h264_amf` encodes.
++If whisper.cpp fails during prepare, it falls back to the CPU by itself.
+ If a command stops with "YouTube asks to sign in" (bot check after many downloads, or age-restricted),
+ ask the user if you may use their browser login, then re-run the same command with
+ `--cookies-from-browser firefox` (they must be logged into YouTube there; Chrome cookies often fail on
+@@ -33,13 +38,25 @@ Windows). Never add cookies without asking.
  - One link (YouTube, Twitch, Kick VOD) or one local video file. Live streams must end first.
  - Clips per stream: 3 by default, at most 3 (`--top 1..3`). Under 20 min of stream: 1-2 clips.
    Clips x length must fit easily into the stream.
@@ -46,7 +58,7 @@ index c568482..6cae7dd 100644
  Only audio is downloaded. It ends with `PREPARED <job folder>` (default `~/StreamClipper/<channel>_<id>/`).
  A 4-hour stream takes about 3-5 min on an RTX 3060, much longer on CPU: run it in the background.
  
-@@ -66,7 +78,7 @@ and a quiet deadpan line can be the best moment.
+@@ -66,7 +83,7 @@ and a quiet deadpan line can be the best moment.
     inside jokes, game state you can't see. A donation or chat message the streamer reads out is fine
     when the clip explains itself.
  2. **Strong first 1-2 seconds.** Start on the line or the reaction itself. Never start on filler
@@ -55,7 +67,7 @@ index c568482..6cae7dd 100644
  3. **A payoff:** a big reaction (freakout, disbelief, scream), a fail, a discovery ("wait, is that...?"),
     a hot take, a funny line. End right after it (the laugh or 1-2 s of reaction), not on the next topic.
  4. **15-60 s long.** 20-40 s is the sweet spot.
-@@ -84,9 +96,12 @@ Good:
+@@ -84,9 +101,12 @@ Good:
  - "WAIT. WAIT. Is that... Vice City? NO WAY, they actually did it" + screaming: discovery + reaction, 9.
  - "People saying GTA 6 looks bad are lying to themselves, look at THIS": hot take with a payoff, 8.
  - «Да ну нахрен, это реально графика? Я думал, это рендер!»: реакция, 8.
@@ -68,7 +80,7 @@ index c568482..6cae7dd 100644
  
  Write **all** candidates and your top picks to `<job>/moments.json` with the Write tool:
  
-@@ -104,12 +119,21 @@ Write **all** candidates and your top picks to `<job>/moments.json` with the Wri
+@@ -104,12 +124,21 @@ Write **all** candidates and your top picks to `<job>/moments.json` with the Wri
  }
  ```
  
@@ -93,7 +105,7 @@ index c568482..6cae7dd 100644
  
  ## 4. Check
  
-@@ -119,6 +143,24 @@ Fix every ERROR. For each WARN either fix it or be sure it is fine, then run che
+@@ -119,6 +148,24 @@ Fix every ERROR. For each WARN either fix it or be sure it is fine, then run che
  Read `<job>/moments.check.md`: the exact first and last words of each clip with times, and the words just
  outside the cut. The first words must hook, the last words must be the payoff.
  
@@ -118,7 +130,7 @@ index c568482..6cae7dd 100644
  ## 5. Render
  
  `clipper.py render <job>` downloads only the needed minutes (up to 1440p), syncs them to the
-@@ -127,14 +169,31 @@ transcript by audio, finds the facecam (also when the layout changes inside the
+@@ -127,14 +174,31 @@ transcript by audio, finds the facecam (also when the layout changes inside the
  `NN_title.mp4`, `post.md` (Shorts / TikTok / Reels / X), `sheet.jpg` (12-frame contact sheet),
  `layout_debug.jpg` (green = facecam crop, red = detected cam overlay, blue = gameplay crop).
  `<job>/report.md`: stream length, candidates, kept, time per stage. `--only 2` re-renders one clip.
@@ -202,7 +214,7 @@ index 757e9a9..2d6d72c 100644
              continue
          ws.append({"s": max(0.0, s), "e": min(dur, e), "w": w["w"]})
 diff --git a/scripts/cl_common.py b/scripts/cl_common.py
-index 83911f0..bb17e87 100644
+index 83911f0..d5ae265 100644
 --- a/scripts/cl_common.py
 +++ b/scripts/cl_common.py
 @@ -100,7 +100,9 @@ _TR = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэю
@@ -215,8 +227,19 @@ index 83911f0..bb17e87 100644
      t = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
      return t[:maxlen].strip("-") or "clip"
  
+@@ -222,6 +224,10 @@ def ytdlp_base_opts(cookies_from_browser=None, cookies_file=None) -> dict:
+     ff = which("ffmpeg")
+     if ff:
+         opts["ffmpeg_location"] = str(Path(ff).parent)
++        # yt-dlp's partial (section) download looks for ffmpeg on PATH only; right after winget installs
++        # ffmpeg, an already-open terminal does not have it on PATH yet
++        if str(Path(ff).parent) not in os.environ.get("PATH", "").split(os.pathsep):
++            os.environ["PATH"] = str(Path(ff).parent) + os.pathsep + os.environ.get("PATH", "")
+     cb = cookies_from_browser or cfg.get("cookies_from_browser")
+     if cb:
+         opts["cookiesfrombrowser"] = (cb,)
 diff --git a/scripts/cl_render.py b/scripts/cl_render.py
-index 3903596..210ddc5 100644
+index 3903596..81fc14a 100644
 --- a/scripts/cl_render.py
 +++ b/scripts/cl_render.py
 @@ -9,7 +9,8 @@ from pathlib import Path
@@ -265,7 +288,7 @@ index 3903596..210ddc5 100644
  
  
  def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
-@@ -49,6 +72,55 @@ def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
+@@ -49,11 +72,63 @@ def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
      return t0, float(nc[lag])
  
  
@@ -321,7 +344,15 @@ index 3903596..210ddc5 100644
  def encoder_args(cfg: dict):
      enc = cfg.get("encoder", "libx264")
      if enc == "h264_nvenc":
-@@ -166,7 +238,8 @@ def manual_layout(box: str, W: int, H: int) -> dict:
+         return ["-c:v", "h264_nvenc", "-preset", "p6", "-tune", "hq", "-rc", "vbr", "-cq", "19", "-b:v", "0",
+                 "-maxrate", "24M", "-bufsize", "48M", "-profile:v", "high", "-spatial-aq", "1"]
++    if enc == "h264_amf":  # AMD GPU
++        return ["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "20",
++                "-qp_b", "22", "-profile:v", "high"]
+     if enc == "h264_videotoolbox":
+         return ["-c:v", "h264_videotoolbox", "-b:v", "14M", "-profile:v", "high"]
+     return ["-c:v", "libx264", "-preset", "medium", "-crf", "19", "-profile:v", "high"]
+@@ -166,7 +241,8 @@ def manual_layout(box: str, W: int, H: int) -> dict:
      return seg
  
  
@@ -331,7 +362,7 @@ index 3903596..210ddc5 100644
      t = Timer()
      meta = read_json(job / "job.json")
      meta.setdefault("timings", {})["render_started"] = time.time()
-@@ -185,6 +258,12 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+@@ -185,6 +261,12 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
      clips_dir = job / "clips"
      results, todo = [], []
      picks = sorted(chk["picks"], key=lambda q: q["order"])
@@ -344,7 +375,7 @@ index 3903596..210ddc5 100644
      # pass 1: fetch the minutes we need, sync them, plan the layout
      for p in picks:
          k = p["order"]
-@@ -248,34 +327,72 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+@@ -248,34 +330,72 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
              log(f"  clip {k}: layout {lay['mode']} (face in {int(lay['face_presence'] * 100)}% of frames)")
              ass = cdir / "captions.ass"
              wsel = [w for w in words if w["e"] > a and w["s"] < b]
@@ -433,7 +464,7 @@ index 3903596..210ddc5 100644
              log(f"    done -> {mp4}")
          except Exception as e:
              log(f"    FAILED: {str(e)[:400]}")
-@@ -324,8 +441,14 @@ def write_report(job: Path):
+@@ -324,8 +444,14 @@ def write_report(job: Path):
               f"- Total: {fmt_dur(rep['total_seconds'] or 0)}", "", "## Clips"]
      for c in clips:
          if "mp4" in c:
@@ -450,7 +481,7 @@ index 3903596..210ddc5 100644
              lines += [f"{c['order']}. FAILED: {c.get('error', '')[:200]}"]
      write_text(job / "report.md", "\n".join(lines) + "\n")
 diff --git a/scripts/cl_setup.py b/scripts/cl_setup.py
-index ee2be7c..31e9e44 100644
+index ee2be7c..400bd30 100644
 --- a/scripts/cl_setup.py
 +++ b/scripts/cl_setup.py
 @@ -2,15 +2,18 @@
@@ -632,7 +663,50 @@ index ee2be7c..31e9e44 100644
  def install_ffmpeg():
      if IS_WIN and which("winget"):
          log("  installing ffmpeg with winget (Gyan.FFmpeg)...")
-@@ -102,6 +256,21 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
+@@ -59,7 +213,7 @@ def ffmpeg_features():
+     has_ass = " ass " in filters
+     encs = []
+     tmp = Path(tempfile.gettempdir()) / "stream_clipper_enc_test.mp4"
+-    for enc in (["h264_nvenc"] if not IS_MAC else ["h264_videotoolbox"]) + ["libx264"]:
++    for enc in (["h264_nvenc", "h264_amf"] if not IS_MAC else ["h264_videotoolbox"]) + ["libx264"]:
+         r = run([ff, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1080x1920:rate=30", "-t", "1",
+                  "-c:v", enc, "-pix_fmt", "yuv420p", str(tmp)], check=False)
+         if r.returncode == 0:
+@@ -94,7 +248,32 @@ def test_gpu_whisper():
+     return False, (r.stderr or "")[-300:]
+ 
+ 
+-def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
++def setup_vulkan(install: bool, want_build: bool):
++    """AMD / Intel GPU on Windows: whisper.cpp with Vulkan. Returns (row or None, device ok)."""
++    import cl_whispercpp as wc
++    gpu = wc.vulkan_gpu()
++    if not gpu:
++        return None, False
++    model = "large-v3-turbo"
++    if install and want_build:
++        if not wc.cli_path():
++            wc.install_build_tools()
++            good, why = wc.build()
++            if not good:
++                return (f"AMD GPU for transcription ({gpu})", False, why), False
++        try:
++            wc.download_model(model)
++        except Exception as e:
++            return (f"AMD GPU for transcription ({gpu})", False, f"model download failed: {e}"[:120]), False
++    if not wc.cli_path():
++        return (f"AMD GPU for transcription ({gpu})", False,
++                "CPU mode for now. To use the GPU: setup --vulkan (installs ~7 GB of build tools)"), False
++    good, why = wc.test_gpu(model)
++    return (f"AMD GPU for transcription ({gpu})", good,
++            f"{model} on GPU via whisper.cpp + Vulkan ({why})" if good else f"CPU mode ({why})"), good
++
++
++def main(install: bool = True, force_cpu: bool = False, cookies_browser=None, vulkan: bool = False):
+     log("AI Stream Clipper setup")
+     log(f"  system: {platform.system()} {platform.release()}, python {sys.version.split()[0]}")
+     rows = []
+@@ -102,6 +281,21 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
      if sys.version_info < (3, 9):
          rows.append(("python >= 3.9", False, sys.version.split()[0]))
          ok_all = False
@@ -654,7 +728,7 @@ index ee2be7c..31e9e44 100644
      # python packages
      missing = [pkg for mod, pkg in PIP.items() if not has_module(mod)]
      if install:
-@@ -134,9 +303,20 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
+@@ -134,34 +328,55 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
              subprocess.run(["brew", "install", "deno"])
          js = which("deno") or which("node")
      rows.append(("JS runtime for YouTube (deno/node)", bool(js), js or "install deno: https://deno.com"))
@@ -676,12 +750,25 @@ index ee2be7c..31e9e44 100644
          good, why = test_gpu_whisper()
          if not good and install and IS_WIN and ("cublas" in why.lower() or "cudnn" in why.lower()):
              pip_install(["nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.*"])
-@@ -145,23 +325,23 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
+             good, why = test_gpu_whisper()
+         if good:
              device, compute, model = "cuda", "float16", "large-v3-turbo"
-         rows.append(("NVIDIA GPU for transcription", good, "large-v3-turbo on GPU" if good else
-                      f"CPU mode, model 'small' ({why.strip().splitlines()[-1][:80] if why.strip() else 'no GPU'})"))
+-        rows.append(("NVIDIA GPU for transcription", good, "large-v3-turbo on GPU" if good else
+-                     f"CPU mode, model 'small' ({why.strip().splitlines()[-1][:80] if why.strip() else 'no GPU'})"))
 -    # whisper model download
-+    # whisper model download (pasta própria; a transcrição carrega dali sem rede)
++        # placa AMD / Intel Arc (Windows): whisper.cpp com Vulkan, ver cl_whispercpp
++        vk_row, vk_ok = (None, False) if good or not IS_WIN else setup_vulkan(install, vulkan)
++        if vk_row:
++            rows.append(vk_row)
++        else:
++            rows.append(("NVIDIA GPU for transcription", good, "large-v3-turbo on GPU" if good else
++                         f"CPU mode, model 'small' ({why.strip().splitlines()[-1][:80] if why.strip() else 'no GPU'})"))
++        if vk_ok:
++            device, compute, model = "vulkan", "f16", "large-v3-turbo"
++    # whisper model download (pasta própria; a transcrição carrega dali sem rede).
++    # No caminho AMD o large-v3-turbo do whisper.cpp já foi baixado: aqui só o small, para detectar o
++    # idioma e para a volta para a CPU.
++    fw_model = "small" if device == "vulkan" else model
 +    model_paths = dict(load_config().get("model_paths") or {})
      if has_module("faster_whisper") and install:
 -        try:
@@ -692,13 +779,13 @@ index ee2be7c..31e9e44 100644
 -        except Exception as e:
 -            rows.append((f"whisper model {model}", False, str(e)[:100]))
 -            ok_all = False
-+        good, where = ensure_model(model)
-+        rows.append((f"whisper model {model}", good, where))
++        good, where = ensure_model(fw_model)
++        rows.append((f"whisper model {fw_model}", good, where))
 +        if good:
-+            model_paths[model] = where
++            model_paths[fw_model] = where
 +        ok_all &= good
-+    elif model_ok(model_dir(model)):
-+        model_paths[model] = str(model_dir(model))
++    elif model_ok(model_dir(fw_model)):
++        model_paths[fw_model] = str(model_dir(fw_model))
      rows.append(("face detector (YuNet)", YUNET.exists(), str(YUNET)))
      fonts_ok = (FONTS / "Montserrat-Black.ttf").exists()
      rows.append(("caption fonts (Cyrillic)", fonts_ok, ""))
@@ -711,10 +798,19 @@ index ee2be7c..31e9e44 100644
          cfg["cookies_from_browser"] = cookies_browser
      save_config(cfg)
 diff --git a/scripts/cl_transcribe.py b/scripts/cl_transcribe.py
-index 5a52c87..ee575b9 100644
+index 5a52c87..3684376 100644
 --- a/scripts/cl_transcribe.py
 +++ b/scripts/cl_transcribe.py
-@@ -78,11 +78,15 @@ def pick_device(force_cpu=False):
+@@ -62,6 +62,8 @@ def pick_device(force_cpu=False):
+     dev = cfg.get("device")
+     if dev == "cuda":
+         return "cuda", cfg.get("compute_type", "float16"), cfg.get("model", "large-v3-turbo")
++    if dev == "vulkan":  # AMD / Intel GPU through whisper.cpp (cl_whispercpp)
++        return "vulkan", "f16", cfg.get("model", "large-v3-turbo")
+     if dev == "cpu":
+         return "cpu", "int8", cfg.get("model", "small")
+     # setup not run yet: probe
+@@ -78,11 +80,15 @@ def pick_device(force_cpu=False):
  def load_model(device, compute, name):
      add_cuda_dll_dirs()
      from faster_whisper import WhisperModel
@@ -732,7 +828,7 @@ index 5a52c87..ee575b9 100644
      n = len(audio)
      votes = {}
      for frac in (0.2, 0.35, 0.5, 0.65, 0.8):
-@@ -97,9 +101,14 @@ def detect_language(model, audio, sr=16000):
+@@ -97,9 +103,14 @@ def detect_language(model, audio, sr=16000):
          except Exception:
              continue
          votes[lang] = votes.get(lang, 0) + prob
@@ -750,14 +846,54 @@ index 5a52c87..ee575b9 100644
  
  
  def is_hallucination(text: str, lang: str) -> bool:
-@@ -136,8 +145,16 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
-             raise
-     audio = read_wav(wav)
-     dur = len(audio) / 16000.0
--    lang = language if language and language != "auto" else detect_language(model, audio)
--    log(f"  whisper: language = {lang}")
-+    # Detecta sempre pelo áudio (5 janelas de 30 s): com --lang forçado serve para pegar palpite errado.
-+    votes = language_votes(model, audio)
+@@ -114,10 +125,75 @@ def is_hallucination(text: str, lang: str) -> bool:
+ 
+ def transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name=None) -> dict:
+     device = pick_device(force_cpu)[0]
+-    with gpu_lock(device == "cuda"):
++    with gpu_lock(device in ("cuda", "vulkan")):
++        if device == "vulkan":
++            try:
++                return _transcribe_vulkan(job, wav, language, model_name)
++            except Exception as e:
++                log(f"  whisper: AMD GPU (whisper.cpp) failed ({str(e)[:160]}), falling back to CPU")
++                force_cpu = True
+         return _transcribe(job, wav, language, force_cpu, model_name)
+ 
+ 
++def _transcribe_vulkan(job: Path, wav: Path, language=None, model_name=None) -> dict:
++    import cl_whispercpp
++    _, _, name = pick_device()
++    name = model_name or name
++    t = Timer()
++    log(f"  whisper: model {name} on AMD GPU (whisper.cpp + Vulkan)")
++    audio = read_wav(wav)
++    dur = len(audio) / 16000.0
++    # mesma votação do caminho faster-whisper, com o modelo small na CPU (alguns segundos)
++    votes = language_votes(load_model("cpu", "int8", load_config().get("cpu_model", "small")), audio)
++    lang = _pick_language(votes, language)
++    raw = cl_whispercpp.transcribe(audio, lang, name, workdir=job / "transcript" / "whispercpp")
++    words, segs = [], []
++    prev_text, repeat = None, 0
++    for s in raw:
++        text = s["text"]
++        if is_hallucination(text, lang) and len(text) < 60:
++            continue
++        if text == prev_text:
++            repeat += 1
++            if repeat >= 2:
++                continue
++        else:
++            repeat = 0
++        prev_text = text
++        w0 = len(words)
++        words += s["words"]
++        segs.append({"s": round(s["s"], 2), "e": round(s["e"], 2), "text": text, "w0": w0, "w1": len(words)})
++    return _write_transcript(job, words, segs, lang, "vulkan", name, t, dur, votes)
++
++
++def _pick_language(votes: dict, language=None) -> str:
++    """Detecta sempre pelo áudio (5 janelas de 30 s): com --lang forçado serve para pegar palpite errado."""
 +    top = max(votes, key=votes.get) if votes else None
 +    forced = language if language and language != "auto" else None
 +    lang = forced or top or "en"
@@ -766,19 +902,56 @@ index 5a52c87..ee575b9 100644
 +    if forced and top and top != forced and votes[top] >= 0.6 and votes.get(forced, 0) < 0.25:
 +        log(f"  WARN: o áudio parece ser '{top}' ({votes[top] * 100:.0f}%), não '{forced}'. "
 +            f"Se o vídeo é mesmo em {top}, rode o prepare de novo com --lang {top}.")
++    return lang
++
++
++def _write_transcript(job, words, segs, lang, device, name, t, dur, votes=None) -> dict:
++    segs.sort(key=lambda x: x["s"])
++    tdir = job / "transcript"
++    write_json(tdir / "words.json", words)
++    write_json(tdir / "segments.json", segs)
++    write_text(tdir / "transcript.txt", "\n".join(f"[{fmt_ts(s['s'])}] {s['text']}" for s in segs))
++    res = {"language": lang,
++           "detected": {k: round(v, 3) for k, v in sorted((votes or {}).items(), key=lambda x: -x[1])[:3]},
++           "device": device, "model": name, "seconds": round(t(), 1),
++           "duration": dur, "words": len(words), "segments": len(segs)}
++    write_json(tdir / "info.json", res)
++    log(f"  whisper: done, {len(words)} words in {t():.0f} s")
++    return res
++
++
+ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name=None) -> dict:
+     from faster_whisper import BatchedInferencePipeline
+     device, compute, name = pick_device(force_cpu)
+@@ -136,8 +212,8 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
+             raise
+     audio = read_wav(wav)
+     dur = len(audio) / 16000.0
+-    lang = language if language and language != "auto" else detect_language(model, audio)
+-    log(f"  whisper: language = {lang}")
++    votes = language_votes(model, audio)
++    lang = _pick_language(votes, language)
      batched = BatchedInferencePipeline(model=model)
      bs = 16 if device == "cuda" else 4
      segments, info = batched.transcribe(audio, language=lang, word_timestamps=True, batch_size=bs,
-@@ -177,7 +194,8 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
-     write_json(tdir / "words.json", words)
-     write_json(tdir / "segments.json", segs)
-     write_text(tdir / "transcript.txt", "\n".join(f"[{fmt_ts(s['s'])}] {s['text']}" for s in segs))
+@@ -172,16 +248,7 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
+         if pct >= last_pct + 10:
+             last_pct = pct
+             log(f"  whisper: {pct}% ({fmt_ts(s.end)} of {fmt_ts(dur)}, {t():.0f} s)")
+-    segs.sort(key=lambda x: x["s"])
+-    tdir = job / "transcript"
+-    write_json(tdir / "words.json", words)
+-    write_json(tdir / "segments.json", segs)
+-    write_text(tdir / "transcript.txt", "\n".join(f"[{fmt_ts(s['s'])}] {s['text']}" for s in segs))
 -    res = {"language": lang, "device": device, "model": name, "seconds": round(t(), 1),
-+    res = {"language": lang, "detected": {k: round(v, 3) for k, v in sorted(votes.items(), key=lambda x: -x[1])[:3]},
-+           "device": device, "model": name, "seconds": round(t(), 1),
-            "duration": dur, "words": len(words), "segments": len(segs)}
-     write_json(tdir / "info.json", res)
-     log(f"  whisper: done, {len(words)} words in {t():.0f} s")
+-           "duration": dur, "words": len(words), "segments": len(segs)}
+-    write_json(tdir / "info.json", res)
+-    log(f"  whisper: done, {len(words)} words in {t():.0f} s")
+-    return res
++    return _write_transcript(job, words, segs, lang, device, name, t, dur, votes)
+ 
+ 
+ _PUNCT = re.compile(r"^[\W_]+|[\W_]+$", re.UNICODE)
 diff --git a/scripts/cl_translate.py b/scripts/cl_translate.py
 new file mode 100644
 index 0000000..7cd4f08
@@ -919,8 +1092,400 @@ index 0000000..7cd4f08
 +            out.append({"s": round(t, 3), "e": round(t + d - 0.02, 3), "w": tok})
 +            t += d
 +    return out
+diff --git a/scripts/cl_whispercpp.py b/scripts/cl_whispercpp.py
+new file mode 100644
+index 0000000..df79b3f
+--- /dev/null
++++ b/scripts/cl_whispercpp.py
+@@ -0,0 +1,386 @@
++"""Transcription on AMD / Intel GPUs (Windows): whisper.cpp built with Vulkan.
++
++faster-whisper (CTranslate2) only runs on NVIDIA. whisper.cpp has no ready Vulkan build for Windows, so
++setup --vulkan installs CMake, the Vulkan SDK and the VS C++ Build Tools with winget and compiles
++whisper-cli once into ~/.ai-stream-clipper/whispercpp/.
++
++Speech regions come from faster-whisper's Silero VAD (whisper.cpp's own --vad moves segment times back
++to the original timeline but not word times). The speech is glued into one wav, whisper-cli transcribes
++it with DTW word timestamps, and the word times are mapped back to the stream timeline here.
++"""
++from __future__ import annotations
++
++import glob
++import json
++import os
++import re
++import subprocess
++import tempfile
++import urllib.request
++import wave
++from pathlib import Path
++
++import numpy as np
++
++from cl_common import CONFIG_DIR, IS_WIN, Timer, fmt_ts, load_config, log, which
++
++TAG = "v1.9.5"
++REPO = "https://github.com/ggml-org/whisper.cpp"
++WCPP_DIR = CONFIG_DIR / "whispercpp"
++SRC_DIR = WCPP_DIR / "src"
++BUILD_DIR = WCPP_DIR / "build"
++DTW_PRESET = {"large-v3-turbo": "large.v3.turbo", "large-v3": "large.v3", "medium": "medium",
++              "small": "small", "base": "base", "tiny": "tiny"}
++MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin"
++WINGET_DEPS = [
++    ("Kitware.CMake", []),
++    ("KhronosGroup.VulkanSDK", []),
++    ("Microsoft.VisualStudio.2022.BuildTools",
++     ["--override", "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools "
++                    "--includeRecommended"]),
++]
++
++
++# ---------- paths and detection ----------
++
++def cli_path() -> Path | None:
++    cfg = load_config()
++    for p in (cfg.get("whispercpp_cli"), BUILD_DIR / "bin" / "Release" / "whisper-cli.exe",
++              BUILD_DIR / "bin" / "whisper-cli.exe", BUILD_DIR / "bin" / "whisper-cli"):
++        if p and Path(p).is_file():
++            return Path(p)
++    return None
++
++
++def model_file(name: str) -> Path:
++    return WCPP_DIR / f"ggml-{name}.bin"
++
++
++def gpu_names() -> list[str]:
++    if not IS_WIN:
++        return []
++    r = subprocess.run(["powershell", "-NoProfile", "-Command",
++                        "(Get-CimInstance Win32_VideoController).Name"],
++                       capture_output=True, text=True, encoding="utf-8", errors="replace")
++    return [x.strip() for x in (r.stdout or "").splitlines() if x.strip()]
++
++
++def vulkan_gpu() -> str | None:
++    """Name of an AMD Radeon / Intel Arc card, if any (NVIDIA uses the CUDA path)."""
++    for n in gpu_names():
++        if re.search(r"radeon|\bamd\b|intel.*\barc\b", n, re.I) and not re.search(r"radeon\(tm\) graphics$", n, re.I):
++            return n
++    return None
++
++
++# ---------- install and build ----------
++
++def _cmake() -> str | None:
++    return which("cmake") or next(iter(glob.glob(r"C:\Program Files\CMake\bin\cmake.exe")), None)
++
++
++def _vulkan_sdk() -> str | None:
++    p = os.environ.get("VULKAN_SDK")
++    if p and Path(p).is_dir():
++        return p
++    if IS_WIN:
++        try:
++            import winreg
++            k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
++                               r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")
++            p = winreg.QueryValueEx(k, "VULKAN_SDK")[0]
++            if p and Path(p).is_dir():
++                return p
++        except OSError:
++            pass
++        found = sorted(glob.glob(r"C:\VulkanSDK\*"))
++        if found:
++            return found[-1]
++    return None
++
++
++def _has_msvc() -> bool:
++    vswhere = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / \
++        "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
++    if not vswhere.is_file():
++        return False
++    r = subprocess.run([str(vswhere), "-products", "*", "-requires",
++                        "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
++                       capture_output=True, text=True, encoding="utf-8", errors="replace")
++    return bool(r.stdout.strip())
++
++
++def build_tools_status() -> dict:
++    return {"cmake": bool(_cmake()), "vulkan_sdk": bool(_vulkan_sdk()), "msvc": _has_msvc(),
++            "git": bool(which("git"))}
++
++
++def install_build_tools() -> None:
++    st = build_tools_status()
++    need = {"Kitware.CMake": not st["cmake"], "KhronosGroup.VulkanSDK": not st["vulkan_sdk"],
++            "Microsoft.VisualStudio.2022.BuildTools": not st["msvc"]}
++    for pkg, extra in WINGET_DEPS:
++        if need[pkg]:
++            log(f"  installing {pkg} with winget (Windows may ask for admin rights)...")
++            subprocess.run(["winget", "install", "-e", "--id", pkg, "--silent", "--accept-source-agreements",
++                            "--accept-package-agreements"] + extra)
++
++
++def build() -> tuple[bool, str]:
++    """Clone and compile whisper-cli with Vulkan. Returns (ok, message)."""
++    cmake, sdk, git = _cmake(), _vulkan_sdk(), which("git")
++    if not (cmake and sdk and git and _has_msvc()):
++        return False, f"missing build tools: {build_tools_status()}"
++    WCPP_DIR.mkdir(parents=True, exist_ok=True)
++    if not (SRC_DIR / "CMakeLists.txt").is_file():
++        log(f"  cloning whisper.cpp {TAG}...")
++        r = subprocess.run([git, "clone", "--depth", "1", "-b", TAG, REPO, str(SRC_DIR)],
++                           capture_output=True, text=True, encoding="utf-8", errors="replace")
++        if r.returncode != 0:
++            return False, "git clone failed: " + r.stderr[-300:]
++    env = dict(os.environ, VULKAN_SDK=sdk)
++    env["PATH"] = str(Path(sdk) / "Bin") + os.pathsep + env.get("PATH", "")
++    log("  compiling whisper.cpp with Vulkan (5-15 min, first time only)...")
++    steps = [
++        [cmake, "-S", str(SRC_DIR), "-B", str(BUILD_DIR), "-DGGML_VULKAN=ON", "-DWHISPER_BUILD_TESTS=OFF",
++         "-DWHISPER_BUILD_SERVER=OFF", "-DWHISPER_SDL2=OFF", "-DBUILD_SHARED_LIBS=OFF"],
++        [cmake, "--build", str(BUILD_DIR), "--config", "Release", "--target", "whisper-cli", "-j"],
++    ]
++    for cmd in steps:
++        r = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
++        if r.returncode != 0:
++            (WCPP_DIR / "build.log").write_text(r.stdout + "\n" + r.stderr, encoding="utf-8")
++            return False, f"build failed, see {WCPP_DIR / 'build.log'}"
++    return (True, "ok") if cli_path() else (False, "whisper-cli not found after build")
++
++
++def download_model(name: str) -> Path:
++    dst = model_file(name)
++    if dst.is_file() and dst.stat().st_size > 10_000_000:
++        return dst
++    WCPP_DIR.mkdir(parents=True, exist_ok=True)
++    part = dst.with_suffix(".part")
++    log(f"  downloading whisper.cpp model '{name}' (first time only)...")
++    req = urllib.request.Request(MODEL_URL.format(name), headers={"User-Agent": "stream-clipper"})
++    with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
++        while True:
++            b = r.read(1 << 20)
++            if not b:
++                break
++            f.write(b)
++    part.replace(dst)
++    return dst
++
++
++def test_gpu(model: str = "large-v3-turbo") -> tuple[bool, str]:
++    """Run whisper-cli on 2 s of a tone; ok if it ran on a Vulkan device."""
++    cli = cli_path()
++    if not cli:
++        return False, "whisper-cli not built"
++    mf = model_file(model)
++    if not mf.is_file():
++        return False, f"model {mf.name} missing"
++    wav = Path(tempfile.gettempdir()) / "stream_clipper_vk_test.wav"
++    _write_wav(wav, (0.1 * np.sin(np.arange(32000) * 2 * np.pi * 300 / 16000)).astype(np.float32))
++    r = subprocess.run([str(cli), "-m", str(mf), "-f", str(wav), "-l", "en", "-nt"],
++                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
++    err = (r.stderr or "") + (r.stdout or "")
++    m = re.search(r"ggml_vulkan: 0 = ([^|(\n]+)", err)
++    if r.returncode == 0 and m:
++        return True, m.group(1).strip()
++    return False, err.strip().splitlines()[-1][:120] if err.strip() else f"exit {r.returncode}"
++
++
++# ---------- transcription ----------
++
++def _write_wav(path: Path, audio: np.ndarray) -> None:
++    pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16)
++    with wave.open(str(path), "wb") as w:
++        w.setnchannels(1)
++        w.setsampwidth(2)
++        w.setframerate(16000)
++        w.writeframes(pcm.tobytes())
++
++
++def _speech_chunks(audio: np.ndarray):
++    from faster_whisper.vad import VadOptions, get_speech_timestamps
++    # same defaults faster-whisper's batched pipeline uses for vad_filter=True
++    return get_speech_timestamps(audio, VadOptions(max_speech_duration_s=30, min_silence_duration_ms=160))
++
++
++class _TimeMap:
++    """Speech-only timeline -> original timeline (like faster-whisper's SpeechTimestampsMap, in ms)."""
++
++    def __init__(self, chunks, sr=16000):
++        self.ends, self.offset = [], []
++        prev_end, silence = 0, 0
++        for c in chunks:
++            silence += c["start"] - prev_end
++            prev_end = c["end"]
++            self.ends.append((c["end"] - silence) / sr)
++            self.offset.append(silence / sr)
++
++    def largest_piece(self, s: float, e: float) -> tuple[float, float]:
++        """[s, e] on the glued timeline, cut at chunk seams; the longest piece."""
++        import bisect
++        cuts = [b for b in self.ends[bisect.bisect_right(self.ends, s):] if b < e]
++        if not cuts:
++            return s, e
++        edges = [s] + cuts + [e]
++        return max(zip(edges, edges[1:]), key=lambda p: p[1] - p[0])
++
++    def orig(self, t: float, is_end=False) -> float:
++        import bisect
++        i = bisect.bisect_left(self.ends, t) if is_end else bisect.bisect_right(self.ends, t)
++        return t + self.offset[min(i, len(self.offset) - 1)]
++
++
++_PUNCT_ONLY = re.compile(r"^[\W_]+$", re.UNICODE)
++
++
++def _segments_to_words(data: dict) -> list[tuple[str, list[dict]]]:
++    """whisper.cpp tokens -> words, per segment. A token starting with a space starts a new word.
++    t_dtw (centiseconds) marks where a token ENDS: word end = t_dtw of its last token, word start = t_dtw of
++    the token before it (but not before the segment start). Measured against faster-whisper on a pt-BR
++    GTA RP stream: median 18 ms off, 88 % of words within 120 ms. Without DTW: token offsets (rougher)."""
++    out = []
++    prev_end = 0.0
++    for seg in data.get("transcription", []):
++        seg_t0 = seg["offsets"]["from"] / 1000.0
++        words = []
++        for t in seg.get("tokens", []):
++            if t["text"].startswith("[_"):
++                continue
++            dtw = t.get("t_dtw", -1)
++            has_dtw = dtw is not None and dtw >= 0
++            t1 = dtw / 100.0 if has_dtw else t["offsets"]["to"] / 1000.0
++            t0 = max(prev_end, seg_t0) if has_dtw else t["offsets"]["from"] / 1000.0
++            if t["text"].startswith(" ") or not words:
++                words.append({"w": t["text"], "s": min(t0, t1), "e": t1, "ps": [t["p"]]})
++            else:
++                words[-1]["w"] += t["text"]
++                words[-1]["e"] = max(words[-1]["e"], t1)
++                words[-1]["ps"].append(t["p"])
++            prev_end = t1
++        clean = []
++        for w in words:
++            txt = w["w"].strip()
++            if txt.startswith("- "):  # whisper.cpp marks speaker turns with "- "
++                txt = txt[2:].strip()
++            if not txt or _PUNCT_ONLY.match(txt):
++                continue
++            clean.append({"w": txt, "s": w["s"], "e": max(w["e"], w["s"] + 0.02), "p": float(min(w["ps"]))})
++        text = re.sub(r"(^|\s)-\s+", r"\1", seg.get("text", "")).strip()
++        out.append((text, clean))
++    return out
++
++
++BLOCK_SPEECH_S = 20 * 60  # speech per whisper-cli run: a crash costs one block, not the whole stream
++TRIES = 3
++
++
++def _blocks(chunks, max_s=BLOCK_SPEECH_S, sr=16000):
++    blocks, cur, cur_len = [], [], 0
++    for c in chunks:
++        n = c["end"] - c["start"]
++        if cur and cur_len + n > max_s * sr:
++            blocks.append(cur)
++            cur, cur_len = [], 0
++        cur.append(c)
++        cur_len += n
++    if cur:
++        blocks.append(cur)
++    return blocks
++
++
++def json_to_segments(data: dict, chunks) -> list[dict]:
++    """whisper-cli JSON of the glued speech of `chunks` -> segments on the original timeline.
++    A word that straddles a seam between two speech chunks would swallow the whole silence between them
++    once mapped back (e.g. 'Calma,' 10007-10024 s, spoken at 10023.5): it keeps only its larger side."""
++    tmap = _TimeMap(chunks)
++    segs = []
++    for text, words in _segments_to_words(data):
++        for w in words:
++            gs, ge = tmap.largest_piece(w["s"], w["e"])
++            w["s"] = round(tmap.orig(gs), 3)
++            w["e"] = round(tmap.orig(ge, is_end=True), 3)
++            w["e"] = max(w["e"], w["s"] + 0.02)
++        if words:
++            segs.append({"s": words[0]["s"], "e": words[-1]["e"], "text": text, "words": words})
++    return segs
++
++
++def _run_cli(cmd, on_pct) -> tuple[int, list[str]]:
++    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
++                         errors="replace")
++    tail = []
++    for line in p.stdout:
++        if line.startswith("["):  # transcript lines: not useful in an error log
++            continue
++        tail = (tail + [line])[-40:]
++        m = re.search(r"progress\s*=\s*(\d+)%", line)
++        if m:
++            on_pct(int(m.group(1)))
++    return p.wait(), tail
++
++
++def transcribe(audio: np.ndarray, lang: str, model: str = "large-v3-turbo", workdir: Path | None = None,
++               threads: int | None = None) -> list[dict]:
++    """Returns segments: [{"s", "e", "text", "words": [{"s", "e", "w", "p"}]}] on the original timeline.
++    The speech is transcribed in blocks of ~20 min; a block whose run fails (e.g. the GPU driver resets
++    during a long job) is retried, and its error output is kept in <workdir>/whispercpp_error.log."""
++    cli = cli_path()
++    if not cli:
++        raise RuntimeError("whisper-cli not built (run setup --vulkan)")
++    mf = model_file(model)
++    t = Timer()
++    chunks = _speech_chunks(audio)
++    if not chunks:
++        return []
++    total = sum(c["end"] - c["start"] for c in chunks)
++    blocks = _blocks(chunks)
++    log(f"  whisper.cpp: {total / 16000:.0f} s of speech in {len(audio) / 16000:.0f} s, {len(blocks)} block(s) "
++        f"(VAD {t():.0f} s)")
++    work = Path(workdir or tempfile.mkdtemp(prefix="wcpp_"))
++    work.mkdir(parents=True, exist_ok=True)
++    errlog = work / "whispercpp_error.log"
++    threads = threads or max(2, min(8, (os.cpu_count() or 4) // 2))
++    segs, done = [], 0
++    state = {"last": -10}
++
++    for bi, block in enumerate(blocks):
++        n = sum(c["end"] - c["start"] for c in block)
++        wav, outbase = work / f"speech_{bi:02d}.wav", work / f"whispercpp_{bi:02d}"
++        _write_wav(wav, np.concatenate([audio[c["start"]:c["end"]] for c in block]))
++        cmd = [str(cli), "-m", str(mf), "-f", str(wav), "-l", lang, "-ojf", "-of", str(outbase), "-np", "-pp",
++               "-t", str(threads), "-mc", "64"]
++        if model in DTW_PRESET:  # DTW word times; whisper.cpp turns DTW off when flash attention is on
++            cmd += ["-dtw", DTW_PRESET[model], "-nfa"]
++
++        def on_pct(p, done=done, n=n):
++            pct = int(100 * (done + n * p / 100) / total)
++            if pct >= state["last"] + 10:
++                state["last"] = pct
++                log(f"  whisper.cpp: {pct}% ({t():.0f} s)")
++
++        for attempt in range(1, TRIES + 1):
++            code, tail = _run_cli(cmd, on_pct)
++            out = Path(str(outbase) + ".json")
++            if code == 0 and out.is_file():
++                break
++            with open(errlog, "a", encoding="utf-8") as f:
++                f.write(f"--- block {bi + 1}/{len(blocks)}, try {attempt}, exit code {code}\n{''.join(tail)}\n")
++            log(f"  whisper.cpp: block {bi + 1}/{len(blocks)} failed (exit code {code}), "
++                f"{'retrying' if attempt < TRIES else 'giving up'}; details in {errlog}")
++        else:
++            raise RuntimeError(f"whisper-cli failed {TRIES} times on block {bi + 1} (exit code {code}), "
++                               f"see {errlog}")
++        data = json.loads(out.read_text(encoding="utf-8", errors="replace"))
++        segs += json_to_segments(data, block)
++        try:
++            wav.unlink()
++        except OSError:
++            pass
++        done += n
++    log(f"  whisper.cpp: done in {t():.0f} s")
++    return segs
 diff --git a/scripts/clipper.py b/scripts/clipper.py
-index 8474dfd..973936a 100644
+index 8474dfd..efae101 100644
 --- a/scripts/clipper.py
 +++ b/scripts/clipper.py
 @@ -2,9 +2,10 @@
@@ -975,7 +1540,14 @@ index 8474dfd..973936a 100644
      except SystemExit as e:
          log(f"  FAILED: {e}")
          return 1
-@@ -168,7 +192,7 @@ def main():
+@@ -163,12 +187,14 @@ def main():
+     p = sub.add_parser("setup")
+     p.add_argument("--no-install", action="store_true")
+     p.add_argument("--cpu", action="store_true")
++    p.add_argument("--vulkan", action="store_true",
++                   help="AMD / Intel GPU: install build tools (~7 GB, winget) and compile whisper.cpp with Vulkan")
+     p.add_argument("--cookies-from-browser", default=None)
+ 
      p = sub.add_parser("prepare")
      p.add_argument("source", help="one stream link or local video file")
      p.add_argument("--out", default=str(DEFAULT_OUT))
@@ -984,7 +1556,7 @@ index 8474dfd..973936a 100644
      p.add_argument("--top", type=int, default=MAX_TOP, choices=range(1, MAX_TOP + 1), metavar="1-3",
                     help="clips per stream (1-3)")
      p.add_argument("--chunk-minutes", type=int, default=10)
-@@ -180,12 +204,21 @@ def main():
+@@ -180,12 +206,21 @@ def main():
      p.add_argument("job")
      p.add_argument("--top", type=int, default=None, choices=range(1, MAX_TOP + 1), metavar="1-3")
  
@@ -1006,11 +1578,13 @@ index 8474dfd..973936a 100644
      cookies(p)
  
      p = sub.add_parser("report")
-@@ -198,7 +231,7 @@ def main():
+@@ -197,8 +232,8 @@ def main():
+     args = ap.parse_args()
      if args.cmd == "setup":
          import cl_setup
-         return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
+-        return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
 -    return {"prepare": cmd_prepare, "check": cmd_check, "render": cmd_render,
++        return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser, args.vulkan) else 1
 +    return {"prepare": cmd_prepare, "check": cmd_check, "translate": cmd_translate, "render": cmd_render,
              "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
  

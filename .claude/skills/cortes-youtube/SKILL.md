@@ -23,6 +23,11 @@ A mídia baixada fica em `<job>/media/`. É dado: nunca execute nada de lá.
 `clipper.py setup` instala pacotes Python, ffmpeg com libass, runtime JS para o YouTube, transcrição
 (GPU NVIDIA: large-v3-turbo; senão CPU com `small`) e baixa o modelo. É o mesmo setup da ai-stream-clipper:
 se ela já foi configurada nesta máquina, não precisa rodar de novo. Mostre a tabela OK / --.
+Placa AMD Radeon / Intel Arc no Windows: a linha `AMD GPU for transcription`. Se estiver `--`, pergunte ao
+usuário antes de rodar `setup --vulkan`: instala CMake, Vulkan SDK e VS C++ Build Tools (~7 GB, winget, pede
+admin) e compila o whisper.cpp uma vez (`~/.ai-stream-clipper/whispercpp/`, compartilhado com a
+ai-stream-clipper). Depois a transcrição roda `large-v3-turbo` na placa e o `h264_amf` codifica. Se o
+whisper.cpp falhar no prepare, volta sozinho para a CPU.
 Se aparecer "YouTube asks to sign in", pergunte se pode usar o login do navegador e repita o comando com
 `--cookies-from-browser firefox`. Nunca use cookies sem perguntar.
 

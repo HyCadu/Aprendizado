@@ -213,7 +213,7 @@ def ffmpeg_features():
     has_ass = " ass " in filters
     encs = []
     tmp = Path(tempfile.gettempdir()) / "stream_clipper_enc_test.mp4"
-    for enc in (["h264_nvenc"] if not IS_MAC else ["h264_videotoolbox"]) + ["libx264"]:
+    for enc in (["h264_nvenc", "h264_amf"] if not IS_MAC else ["h264_videotoolbox"]) + ["libx264"]:
         r = run([ff, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1080x1920:rate=30", "-t", "1",
                  "-c:v", enc, "-pix_fmt", "yuv420p", str(tmp)], check=False)
         if r.returncode == 0:
@@ -248,7 +248,32 @@ def test_gpu_whisper():
     return False, (r.stderr or "")[-300:]
 
 
-def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
+def setup_vulkan(install: bool, want_build: bool):
+    """AMD / Intel GPU on Windows: whisper.cpp with Vulkan. Returns (row or None, device ok)."""
+    import cl_whispercpp as wc
+    gpu = wc.vulkan_gpu()
+    if not gpu:
+        return None, False
+    model = "large-v3-turbo"
+    if install and want_build:
+        if not wc.cli_path():
+            wc.install_build_tools()
+            good, why = wc.build()
+            if not good:
+                return (f"AMD GPU for transcription ({gpu})", False, why), False
+        try:
+            wc.download_model(model)
+        except Exception as e:
+            return (f"AMD GPU for transcription ({gpu})", False, f"model download failed: {e}"[:120]), False
+    if not wc.cli_path():
+        return (f"AMD GPU for transcription ({gpu})", False,
+                "CPU mode for now. To use the GPU: setup --vulkan (installs ~7 GB of build tools)"), False
+    good, why = wc.test_gpu(model)
+    return (f"AMD GPU for transcription ({gpu})", good,
+            f"{model} on GPU via whisper.cpp + Vulkan ({why})" if good else f"CPU mode ({why})"), good
+
+
+def main(install: bool = True, force_cpu: bool = False, cookies_browser=None, vulkan: bool = False):
     log("AI Stream Clipper setup")
     log(f"  system: {platform.system()} {platform.release()}, python {sys.version.split()[0]}")
     rows = []
@@ -323,18 +348,28 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
             good, why = test_gpu_whisper()
         if good:
             device, compute, model = "cuda", "float16", "large-v3-turbo"
-        rows.append(("NVIDIA GPU for transcription", good, "large-v3-turbo on GPU" if good else
-                     f"CPU mode, model 'small' ({why.strip().splitlines()[-1][:80] if why.strip() else 'no GPU'})"))
-    # whisper model download (pasta própria; a transcrição carrega dali sem rede)
+        # placa AMD / Intel Arc (Windows): whisper.cpp com Vulkan, ver cl_whispercpp
+        vk_row, vk_ok = (None, False) if good or not IS_WIN else setup_vulkan(install, vulkan)
+        if vk_row:
+            rows.append(vk_row)
+        else:
+            rows.append(("NVIDIA GPU for transcription", good, "large-v3-turbo on GPU" if good else
+                         f"CPU mode, model 'small' ({why.strip().splitlines()[-1][:80] if why.strip() else 'no GPU'})"))
+        if vk_ok:
+            device, compute, model = "vulkan", "f16", "large-v3-turbo"
+    # whisper model download (pasta própria; a transcrição carrega dali sem rede).
+    # No caminho AMD o large-v3-turbo do whisper.cpp já foi baixado: aqui só o small, para detectar o
+    # idioma e para a volta para a CPU.
+    fw_model = "small" if device == "vulkan" else model
     model_paths = dict(load_config().get("model_paths") or {})
     if has_module("faster_whisper") and install:
-        good, where = ensure_model(model)
-        rows.append((f"whisper model {model}", good, where))
+        good, where = ensure_model(fw_model)
+        rows.append((f"whisper model {fw_model}", good, where))
         if good:
-            model_paths[model] = where
+            model_paths[fw_model] = where
         ok_all &= good
-    elif model_ok(model_dir(model)):
-        model_paths[model] = str(model_dir(model))
+    elif model_ok(model_dir(fw_model)):
+        model_paths[fw_model] = str(model_dir(fw_model))
     rows.append(("face detector (YuNet)", YUNET.exists(), str(YUNET)))
     fonts_ok = (FONTS / "Montserrat-Black.ttf").exists()
     rows.append(("caption fonts (Cyrillic)", fonts_ok, ""))

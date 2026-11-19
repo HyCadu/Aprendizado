@@ -62,6 +62,8 @@ def pick_device(force_cpu=False):
     dev = cfg.get("device")
     if dev == "cuda":
         return "cuda", cfg.get("compute_type", "float16"), cfg.get("model", "large-v3-turbo")
+    if dev == "vulkan":  # AMD / Intel GPU through whisper.cpp (cl_whispercpp)
+        return "vulkan", "f16", cfg.get("model", "large-v3-turbo")
     if dev == "cpu":
         return "cpu", "int8", cfg.get("model", "small")
     # setup not run yet: probe
@@ -123,8 +125,73 @@ def is_hallucination(text: str, lang: str) -> bool:
 
 def transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name=None) -> dict:
     device = pick_device(force_cpu)[0]
-    with gpu_lock(device == "cuda"):
+    with gpu_lock(device in ("cuda", "vulkan")):
+        if device == "vulkan":
+            try:
+                return _transcribe_vulkan(job, wav, language, model_name)
+            except Exception as e:
+                log(f"  whisper: AMD GPU (whisper.cpp) failed ({str(e)[:160]}), falling back to CPU")
+                force_cpu = True
         return _transcribe(job, wav, language, force_cpu, model_name)
+
+
+def _transcribe_vulkan(job: Path, wav: Path, language=None, model_name=None) -> dict:
+    import cl_whispercpp
+    _, _, name = pick_device()
+    name = model_name or name
+    t = Timer()
+    log(f"  whisper: model {name} on AMD GPU (whisper.cpp + Vulkan)")
+    audio = read_wav(wav)
+    dur = len(audio) / 16000.0
+    # mesma votação do caminho faster-whisper, com o modelo small na CPU (alguns segundos)
+    votes = language_votes(load_model("cpu", "int8", load_config().get("cpu_model", "small")), audio)
+    lang = _pick_language(votes, language)
+    raw = cl_whispercpp.transcribe(audio, lang, name, workdir=job / "transcript" / "whispercpp")
+    words, segs = [], []
+    prev_text, repeat = None, 0
+    for s in raw:
+        text = s["text"]
+        if is_hallucination(text, lang) and len(text) < 60:
+            continue
+        if text == prev_text:
+            repeat += 1
+            if repeat >= 2:
+                continue
+        else:
+            repeat = 0
+        prev_text = text
+        w0 = len(words)
+        words += s["words"]
+        segs.append({"s": round(s["s"], 2), "e": round(s["e"], 2), "text": text, "w0": w0, "w1": len(words)})
+    return _write_transcript(job, words, segs, lang, "vulkan", name, t, dur, votes)
+
+
+def _pick_language(votes: dict, language=None) -> str:
+    """Detecta sempre pelo áudio (5 janelas de 30 s): com --lang forçado serve para pegar palpite errado."""
+    top = max(votes, key=votes.get) if votes else None
+    forced = language if language and language != "auto" else None
+    lang = forced or top or "en"
+    seen = f"{top} {votes[top] * 100:.0f}%" if top else "sem fala clara"
+    log(f"  whisper: language = {lang} (detectado: {seen})")
+    if forced and top and top != forced and votes[top] >= 0.6 and votes.get(forced, 0) < 0.25:
+        log(f"  WARN: o áudio parece ser '{top}' ({votes[top] * 100:.0f}%), não '{forced}'. "
+            f"Se o vídeo é mesmo em {top}, rode o prepare de novo com --lang {top}.")
+    return lang
+
+
+def _write_transcript(job, words, segs, lang, device, name, t, dur, votes=None) -> dict:
+    segs.sort(key=lambda x: x["s"])
+    tdir = job / "transcript"
+    write_json(tdir / "words.json", words)
+    write_json(tdir / "segments.json", segs)
+    write_text(tdir / "transcript.txt", "\n".join(f"[{fmt_ts(s['s'])}] {s['text']}" for s in segs))
+    res = {"language": lang,
+           "detected": {k: round(v, 3) for k, v in sorted((votes or {}).items(), key=lambda x: -x[1])[:3]},
+           "device": device, "model": name, "seconds": round(t(), 1),
+           "duration": dur, "words": len(words), "segments": len(segs)}
+    write_json(tdir / "info.json", res)
+    log(f"  whisper: done, {len(words)} words in {t():.0f} s")
+    return res
 
 
 def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name=None) -> dict:
@@ -145,16 +212,8 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
             raise
     audio = read_wav(wav)
     dur = len(audio) / 16000.0
-    # Detecta sempre pelo áudio (5 janelas de 30 s): com --lang forçado serve para pegar palpite errado.
     votes = language_votes(model, audio)
-    top = max(votes, key=votes.get) if votes else None
-    forced = language if language and language != "auto" else None
-    lang = forced or top or "en"
-    seen = f"{top} {votes[top] * 100:.0f}%" if top else "sem fala clara"
-    log(f"  whisper: language = {lang} (detectado: {seen})")
-    if forced and top and top != forced and votes[top] >= 0.6 and votes.get(forced, 0) < 0.25:
-        log(f"  WARN: o áudio parece ser '{top}' ({votes[top] * 100:.0f}%), não '{forced}'. "
-            f"Se o vídeo é mesmo em {top}, rode o prepare de novo com --lang {top}.")
+    lang = _pick_language(votes, language)
     batched = BatchedInferencePipeline(model=model)
     bs = 16 if device == "cuda" else 4
     segments, info = batched.transcribe(audio, language=lang, word_timestamps=True, batch_size=bs,
@@ -189,17 +248,7 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
         if pct >= last_pct + 10:
             last_pct = pct
             log(f"  whisper: {pct}% ({fmt_ts(s.end)} of {fmt_ts(dur)}, {t():.0f} s)")
-    segs.sort(key=lambda x: x["s"])
-    tdir = job / "transcript"
-    write_json(tdir / "words.json", words)
-    write_json(tdir / "segments.json", segs)
-    write_text(tdir / "transcript.txt", "\n".join(f"[{fmt_ts(s['s'])}] {s['text']}" for s in segs))
-    res = {"language": lang, "detected": {k: round(v, 3) for k, v in sorted(votes.items(), key=lambda x: -x[1])[:3]},
-           "device": device, "model": name, "seconds": round(t(), 1),
-           "duration": dur, "words": len(words), "segments": len(segs)}
-    write_json(tdir / "info.json", res)
-    log(f"  whisper: done, {len(words)} words in {t():.0f} s")
-    return res
+    return _write_transcript(job, words, segs, lang, device, name, t, dur, votes)
 
 
 _PUNCT = re.compile(r"^[\W_]+|[\W_]+$", re.UNICODE)

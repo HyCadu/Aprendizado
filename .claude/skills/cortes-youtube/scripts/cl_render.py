@@ -126,6 +126,9 @@ def encoder_args(cfg: dict):
     if enc == "h264_nvenc":
         return ["-c:v", "h264_nvenc", "-preset", "p6", "-tune", "hq", "-rc", "vbr", "-cq", "19", "-b:v", "0",
                 "-maxrate", "24M", "-bufsize", "48M", "-profile:v", "high", "-spatial-aq", "1"]
+    if enc == "h264_amf":  # AMD GPU
+        return ["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "20",
+                "-qp_b", "22", "-profile:v", "high"]
     if enc == "h264_videotoolbox":
         return ["-c:v", "h264_videotoolbox", "-b:v", "14M", "-profile:v", "high"]
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "19", "-profile:v", "high"]

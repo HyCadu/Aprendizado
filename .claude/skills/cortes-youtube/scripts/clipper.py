@@ -194,6 +194,8 @@ def main():
     p = sub.add_parser("setup")
     p.add_argument("--no-install", action="store_true")
     p.add_argument("--cpu", action="store_true")
+    p.add_argument("--vulkan", action="store_true",
+                   help="AMD / Intel GPU: install build tools (~7 GB, winget) and compile whisper.cpp with Vulkan")
     p.add_argument("--cookies-from-browser", default=None)
 
     p = sub.add_parser("prepare")
@@ -240,7 +242,7 @@ def main():
     args = ap.parse_args()
     if args.cmd == "setup":
         import cl_setup
-        return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
+        return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser, args.vulkan) else 1
     return {"prepare": cmd_prepare, "check": cmd_check, "translate": cmd_translate, "render": cmd_render,
             "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
 

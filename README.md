@@ -65,6 +65,14 @@ O setup resolve sozinho três problemas comuns: Python da Microsoft Store (insta
 para abrir o terminal de novo), versão do PyAV que quebra a transcrição, e download do modelo que trava
 (tenta de novo por outro caminho; se a internet cair, rodar de novo continua de onde parou).
 
+### 7. Placa AMD (opcional)
+Com uma placa **AMD Radeon** (ex.: RX 6600, RX 7600), digite na caixa do Claude:
+**`configura o clipper para usar minha placa AMD`**.
+Ele instala ferramentas de compilação (~7 GB) e compila o programa de transcrição uma vez (de 20 a 40 min).
+O Windows vai pedir permissão de administrador algumas vezes: clique em **Sim**.
+Depois disso, a transcrição fica tão rápida quanto numa placa NVIDIA (num teste com a RX 7600, um vídeo de 25 min
+foi transcrito em 36 s).
+
 ---
 
 ## Como usar
@@ -98,7 +106,7 @@ Quando o Claude pedir permissão, escolha **Yes**.
 
 **Quanto tempo leva:**
 
-| | Com placa NVIDIA | Sem placa NVIDIA |
+| | Com placa NVIDIA (ou AMD, passo 7) | Sem placa de vídeo |
 |---|---|---|
 | Vídeo de 20 min | ~3 min | ~10 a 15 min |
 | Vídeo de 60 min | ~5 min | ~20 a 30 min |
@@ -185,7 +193,7 @@ Para cortar sem abrir o Claude, também dá para passar o link direto no script:
 | "YouTube asks to sign in" ou "not a bot" | Entre no YouTube pelo **Firefox** e diga ao Claude: `usa meus cookies do Firefox`. Ou espere 1 hora. |
 | A legenda saiu sem sentido / em outro idioma | O Claude errou o idioma falado no vídeo. Diga: `o vídeo é em inglês, refaz a transcrição`. |
 | "This stream is still live" | A live ainda não acabou. Espere o vídeo aparecer no canal. |
-| Muito lento | Normal sem placa NVIDIA. Deixe rodando. |
+| Muito lento | Normal sem placa de vídeo. Deixe rodando. Com placa AMD, veja o passo 7. |
 | O rosto saiu cortado | Diga ao Claude: `o rosto ficou errado no clipe 2, arruma`. |
 | Atualizar o projeto | Na pasta `Aprendizado`, digite `git pull` e depois rode de novo o instalador do passo 5 (atualiza a skill de lives). |
 | Qualquer outro erro | Copie a mensagem e cole para o Claude com: `deu esse erro, resolve`. |
