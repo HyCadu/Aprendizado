@@ -58,9 +58,59 @@ def find_python() -> str | None:
     return p
 
 
+# Placa AMD / Intel Arc (Windows): nome e driver pelo WMI, memória total pelo registro (o AdapterRAM do WMI
+# trava em 4 GB), uso e memória ocupada pelos contadores de desempenho da GPU. Temperatura o Windows não dá.
+_PS_GPU = r"""
+$v = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'Radeon|AMD|Arc' } | Select-Object -First 1
+if (-not $v) { exit 3 }
+$cls = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+$mem = 0
+Get-ChildItem $cls -ErrorAction SilentlyContinue | ForEach-Object {
+  $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+  if ($p -and $p.DriverDesc -eq $v.Name -and $p.'HardwareInformation.qwMemorySize') { $mem = $p.'HardwareInformation.qwMemorySize' }
+}
+$s = (Get-Counter '\GPU Engine(*engtype_3D)\Utilization Percentage','\GPU Adapter Memory(*)\Dedicated Usage' -ErrorAction SilentlyContinue).CounterSamples
+$util = ($s | Where-Object Path -match 'gpu engine' | Measure-Object CookedValue -Sum).Sum
+$used = ($s | Where-Object Path -match 'adapter memory' | Measure-Object CookedValue -Maximum).Maximum
+"$($v.Name)|$($v.DriverVersion)|$mem|$util|$used"
+"""
+
+
+def _gpu_info_windows() -> dict | None:
+    if os.name != "nt":
+        return None
+    code, out = run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _PS_GPU], 20)
+    line = next((ln for ln in out.splitlines() if ln.count("|") == 4), "")
+    if code != 0 or not line:
+        return None
+    name, driver, mem, util, used = (x.strip() for x in line.split("|"))
+
+    def num(x):
+        try:
+            return float(x)
+        except ValueError:
+            return None
+
+    info = {"ok": True, "vendor": "AMD" if re.search(r"radeon|amd", name, re.I) else "Intel",
+            "name": name, "driver": driver, "temp": ""}
+    if num(mem):
+        info["mem_total"] = f"{num(mem) / 2**20:.0f}"
+    if num(used) is not None:
+        info["mem_used"] = f"{num(used) / 2**20:.0f}"
+    if num(util) is not None:
+        info["util"] = f"{min(100.0, num(util)):.0f}"
+    # transcrição na placa: whisper.cpp + Vulkan (setup --vulkan), ver cl_whispercpp nas skills
+    info["api"] = "Vulkan (whisper.cpp)" if clipper_config().get("device") == "vulkan" else \
+        "Vulkan: não configurado (setup --vulkan)"
+    return info
+
+
 def gpu_info() -> dict:
     smi = shutil.which("nvidia-smi")
     if not smi:
+        other = _gpu_info_windows()
+        if other:
+            return other
         return {"ok": False, "detail": "nvidia-smi não encontrado (sem placa NVIDIA ou driver)."}
     fields = "name,memory.total,memory.used,driver_version,temperature.gpu,utilization.gpu"
     code, out = run([smi, f"--query-gpu={fields}", "--format=csv,noheader,nounits"], 10)
@@ -76,6 +126,7 @@ def gpu_info() -> dict:
             info["cuda"] = m.group(1)
             break
     info["ok"] = True
+    info["vendor"] = "NVIDIA"
     return info
 
 

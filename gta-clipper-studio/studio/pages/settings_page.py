@@ -142,9 +142,11 @@ class Settings(Page):
         self.g_grid = QGridLayout()
         self.g_grid.setVerticalSpacing(6)
         self.g_vals = {}
+        self.g_keys = {}
         for i, (k, t) in enumerate((("driver", "Driver"), ("cuda", "CUDA"), ("temp", "Temperatura"),
                                     ("util", "Uso"), ("trans", "Transcrição"), ("enc", "Codificador"))):
-            self.g_grid.addWidget(label(t, "Dim"), i, 0)
+            self.g_keys[k] = label(t, "Dim")
+            self.g_grid.addWidget(self.g_keys[k], i, 0)
             val = label("--")
             self.g_vals[k] = val
             self.g_grid.addWidget(val, i, 1)
@@ -233,15 +235,26 @@ class Settings(Page):
     def _render_gpu(self):
         g = self.state.gpu
         if not g.get("ok"):
-            self.g_name.setText("Sem GPU NVIDIA")
+            self.g_name.setText("Sem placa de vídeo dedicada")
             self.vram_lbl.setText(g.get("detail", ""))
             return
         self.g_name.setText(g["name"])
         self.g_vals["driver"].setText(g.get("driver", "--"))
-        self.g_vals["cuda"].setText(g.get("cuda", "--"))
+        if g.get("vendor", "NVIDIA") == "NVIDIA":
+            self.g_keys["cuda"].setText("CUDA")
+            self.g_vals["cuda"].setText(g.get("cuda", "--"))
+        else:  # AMD / Intel Arc: a transcrição usa Vulkan (whisper.cpp)
+            self.g_keys["cuda"].setText("Vulkan")
+            self.g_vals["cuda"].setText(g.get("api", "--"))
         try:
             self.g_vals["temp"].setText(f"{float(g['temp']):.0f} °C")
+        except (KeyError, ValueError):
+            self.g_vals["temp"].setText("--")
+        try:
             self.g_vals["util"].setText(f"{float(g['util']):.0f} %")
+        except (KeyError, ValueError):
+            self.g_vals["util"].setText("--")
+        try:
             used, total = float(g["mem_used"]), float(g["mem_total"])
             self.vram.animate_to(100 * used / total if total else 0)
             self.vram_lbl.setText(f"{used / 1024:.1f} GB de {total / 1024:.1f} GB em uso")

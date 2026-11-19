@@ -215,9 +215,19 @@ class Dashboard(Page):
         g = st.gpu
         if g:
             if g.get("ok"):
-                self.r_gpu.set(True, f"{g['name']} · {int(float(g['mem_total']) / 1024)} GB · {float(g.get('temp') or 0):.0f} °C")
+                parts = [g["name"]]
+                try:
+                    parts.append(f"{round(float(g['mem_total']) / 1024)} GB")
+                except (KeyError, ValueError):
+                    pass
+                try:
+                    parts.append(f"{float(g['temp']):.0f} °C")
+                except (KeyError, ValueError):
+                    if g.get("api"):  # AMD / Intel Arc: sem temperatura no Windows; mostra o modo de transcrição
+                        parts.append(g["api"])
+                self.r_gpu.set(True, " · ".join(parts))
             else:
-                self.r_gpu.set(False, g.get("detail", "sem GPU NVIDIA"))
+                self.r_gpu.set(False, g.get("detail", "sem placa de vídeo dedicada"))
         cfg = st.cfg
         if st.checks:
             if cfg:

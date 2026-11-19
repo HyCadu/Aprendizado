@@ -142,7 +142,7 @@ class NewJob(Page):
         sec.setSpacing(4)
         for ic, txt in (("shield", "Nada é publicado automaticamente: os vídeos ficam só no seu computador."),
                         ("check", "Usa as skills e scripts que já existem; nenhum arquivo é apagado."),
-                        ("clock", "Com placa NVIDIA: ~3-5 min por vídeo de 60 min, ~10-15 min por live de 4 h.")):
+                        ("clock", "Com placa NVIDIA (ou AMD com setup --vulkan): ~3-5 min por vídeo de 60 min, ~10-15 min por live de 4 h.")):
             r = QHBoxLayout()
             r.addWidget(Icon(ic, 13, T.ORANGE))
             r.addWidget(label(txt, "Dim"), 1)
