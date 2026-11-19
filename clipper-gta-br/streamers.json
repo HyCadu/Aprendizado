@@ -1,5 +1,6 @@
 {
- "_leia": "Lista de canais monitorados. Confira os links com: python -I clipper-gta-br/novas_lives.py --verificar. Use 'ativo': false para pausar um canal. 'so_gta': true só aceita lives cujo título tenha uma das palavras_gta.",
+ "_leia": "Lista de canais monitorados. Confira os links com: python -I clipper-gta-br/novas_lives.py --verificar. Use 'ativo': false para pausar um canal. 'so_gta': true só aceita lives cujo título tenha uma das palavras_gta. 'idioma': língua falada na live (pt, en ou auto; padrão pt). 'legenda': idioma da legenda dos cortes (pt ou en); por streamer ou o padrão abaixo. Ex. de gringo: {\"nome\": \"iShowSpeed\", \"url\": \"https://www.youtube.com/@IShowSpeed\", \"ativo\": true, \"so_gta\": true, \"idioma\": \"en\", \"legenda\": \"pt\"}",
+ "legenda": "pt",
  "max_lives_por_rodada": 2,
  "dias_para_tras": 3,
  "duracao_minima_min": 30,

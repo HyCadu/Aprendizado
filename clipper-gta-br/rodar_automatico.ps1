@@ -1,11 +1,13 @@
 ﻿# Roda o fluxo de cortes de lives sem interação (Windows).
 #   Automático (streamers de streamers.json):  .\clipper-gta-br\rodar_automatico.ps1
-#   Live(s) específica(s):                     .\clipper-gta-br\rodar_automatico.ps1 -Link URL [-Link URL2] [-Top 2]
+#   Live(s) específica(s):                     .\clipper-gta-br\rodar_automatico.ps1 -Link URL [-Link URL2] [-Top 2] [-Legenda en]
+#   -Legenda pt|en: idioma da legenda (padrão pt; no automático, o "legenda" do streamer em streamers.json)
 # Agendar todo dia às 4h17 (ajuste o caminho):
 #   schtasks /Create /SC DAILY /ST 04:17 /TN "Cortes GTA" /TR "powershell -ExecutionPolicy Bypass -File C:\caminho\Aprendizado\clipper-gta-br\rodar_automatico.ps1"
 param(
     [string[]]$Link = @(),
-    [ValidateRange(1, 3)][int]$Top = 0
+    [ValidateRange(1, 3)][int]$Top = 0,
+    [ValidateSet("", "pt", "en")][string]$Legenda = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path $PSScriptRoot -Parent
@@ -13,6 +15,7 @@ $Repo = Split-Path $PSScriptRoot -Parent
 $Prompt = "/clipar-gta-br"
 if ($Link.Count -gt 0) { $Prompt += " " + ($Link -join " ") }
 if ($Top -gt 0) { $Prompt += " (só $Top cortes por live)" }
+if ($Legenda) { $Prompt += " --legenda $Legenda" }
 
 $LogDir = Join-Path $env:USERPROFILE "StreamClipper\logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null

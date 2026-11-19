@@ -104,7 +104,8 @@ def pendentes(cfg: dict, estado: dict, buscar=listar_videos) -> list:
             if s.get("so_gta") and not eh_gta(e.get("title", ""), palavras):
                 continue
             achadas.append({"streamer": s["nome"], "url": link, "titulo": e.get("title", ""),
-                            "duracao_min": round(dur / 60) if dur else None, "timestamp": ts})
+                            "duracao_min": round(dur / 60) if dur else None, "timestamp": ts,
+                            "idioma": s.get("idioma", "pt"), "legenda": s.get("legenda") or cfg.get("legenda", "pt")})
     achadas.sort(key=lambda x: -(x["timestamp"] or 0))
     return achadas[: int(cfg.get("max_lives_por_rodada", 2))]
 

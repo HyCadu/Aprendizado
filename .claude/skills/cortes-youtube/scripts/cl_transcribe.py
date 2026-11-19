@@ -78,6 +78,10 @@ def pick_device(force_cpu=False):
 def load_model(device, compute, name):
     add_cuda_dll_dirs()
     from faster_whisper import WhisperModel
+    # o setup baixa o modelo para uma pasta própria: carregar dali não depende da rede
+    path = (load_config().get("model_paths") or {}).get(name)
+    if path and (Path(path) / "model.bin").is_file():
+        return WhisperModel(path, device=device, compute_type=compute)
     return WhisperModel(name, device=device, compute_type=compute)
 
 
