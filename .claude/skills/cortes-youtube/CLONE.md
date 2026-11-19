@@ -11,3 +11,5 @@ Mudanças em relação ao original:
 - Saída em `~/CortesYouTube` (o original usa `~/StreamClipper`).
 - Palavras-chave e hashtags pt-BR para gameplay de GTA editado.
 - `SKILL.md` reescrito para vídeos editados (música, efeitos, cutscenes, vinhetas).
+- Legenda traduzida para pt-BR em vídeo estrangeiro: comando `translate` e `scripts/cl_translate.py`
+  (também no patch da skill de lives; `cl_render.py`, `cl_captions.py` e `cl_translate.py` são idênticos nas duas).

@@ -79,6 +79,11 @@ Depois digite um destes comandos na caixa do Claude:
 | Um vídeo, com menos clipes (1 a 5) | `/cortes-youtube LINK --top 3` |
 | Uma live que já terminou | `/clipar-gta-br LINK` |
 | As lives novas dos streamers da lista | `/clipar-gta-br` |
+| Uma live gringa (inglês, espanhol...) com legenda em português | `corta essa live LINK com legenda em português` |
+
+**Vídeos e lives gringos** saem com a legenda traduzida para o português, no mesmo estilo palavra por
+palavra. O Claude traduz só as frases dos clipes escolhidos. Se quiser a legenda no idioma original, peça:
+`deixa a legenda em inglês`. Já tinha instalado a skill de lives antes? Rode o passo 5 de novo para atualizar.
 
 Troque `LINK` pelo endereço do vídeo, por exemplo `https://www.youtube.com/watch?v=abc123`.
 Quando o Claude pedir permissão, escolha **Yes**.
@@ -194,3 +199,5 @@ Para cortar sem abrir o Claude, também dá para passar o link direto no script:
 - Até 3 clipes por live e até 5 por vídeo, conforme a duração.
 - No automático: lives dos últimos 3 dias e vídeos dos últimos 7. Cada vídeo é cortado uma vez só.
 - Palavrões aparecem mascarados na legenda (P\*RRA).
+- Vídeo ou live em outro idioma: a transcrição e o tempo vêm do áudio original, e cada frase traduzida
+  aparece na tela exatamente enquanto a frase original é falada.
