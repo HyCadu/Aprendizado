@@ -40,6 +40,8 @@ Depois abra o Claude Code **dentro da pasta `Aprendizado`** e digite:
 - **Automático (todo dia):**
   - Mac/Linux: `crontab -e` e adicione `17 4 * * * /caminho/Aprendizado/clipper-gta-br/rodar_automatico.sh`
   - Windows: veja o comando `schtasks` no topo de `rodar_automatico.ps1`
+- **Sem abrir o Claude, com link:** `clipper-gta-br/rodar_automatico.sh --link URL [--link URL2] [--top 2]`
+  (Windows: `rodar_automatico.ps1 -Link URL -Top 2`)
 
 Os clipes ficam em `~/StreamClipper/<canal>_<id>/clips/`: o `.mp4`, o `post.md` com títulos e hashtags e
 um `sheet.jpg` para conferir rápido. Logs da execução automática ficam em `~/StreamClipper/logs/`.
@@ -56,3 +58,30 @@ O fluxo **nunca publica nada sozinho**.
 
 Só publique cortes de streamers que **permitem cortes** (muitos têm programa oficial de cortes, com regras de
 crédito e monetização). Confira as regras de cada um e assista cada clipe antes de postar.
+
+---
+
+# Cortes de vídeos do YouTube (gameplay de GTA editado, até 60 min)
+
+Clone da skill, em `.claude/skills/cortes-youtube/` (já vem com o repositório, não precisa instalar), feito
+para vídeos editados: até **5 clipes** por vídeo, lê o vídeo inteiro (barato em até 60 min), ignora
+vinheta, pedido de inscrição, letra de música e cutscene longa. Vídeo com mais de 60 min é recusado.
+As mudanças em relação ao original estão em `.claude/skills/cortes-youtube/CLONE.md`.
+
+Setup: se você já rodou `configura o clipper`, está pronto. Se não, no Claude Code: `configura os cortes do youtube`.
+
+| Como | Comando |
+|---|---|
+| Um vídeo (no Claude Code) | `/cortes-youtube https://www.youtube.com/watch?v=...` |
+| Vários, com nº de clipes | `/cortes-youtube URL1 URL2 --top 3` |
+| Pelo terminal, sem abrir o Claude | `cortes-youtube/rodar_automatico.sh --link URL [--link URL2] [--top 3]` |
+| Windows, pelo terminal | `.\cortes-youtube\rodar_automatico.ps1 -Link URL1,URL2 -Top 3` |
+| Automático (canais da lista) | `cortes-youtube/rodar_automatico.sh` (sem `--link`) no cron / Agendador |
+| Conferir um link antes | `python -I cortes-youtube/novos_videos.py --link URL` (duração, nº de clipes sugerido, avisos) |
+
+Sem `--top`, o número de clipes segue a duração: até 10 min, 2; até 20 min, 3; até 40 min, 4; até 60 min, 5.
+Os canais do modo automático ficam em `cortes-youtube/canais.json`: troque o exemplo pelos canais que você
+quer e mude `"ativo"` para `true`. Saída em `~/CortesYouTube/<canal>_<id>/clips/`.
+
+Vídeo editado é trabalho de outra pessoa (edição, música, efeitos): só corte com permissão do criador,
+dê crédito e assista cada clipe antes de postar.
