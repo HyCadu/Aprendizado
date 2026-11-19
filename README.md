@@ -96,6 +96,15 @@ Não feche a janela enquanto ele trabalha.
 
 ---
 
+## Usar pelo programa (GTA CLIPPER STUDIO)
+
+Também dá para cortar sem digitar comandos. Abra a pasta `gta-clipper-studio` e dê dois cliques em
+**`GTA Clipper Studio.exe`** (ou em **`Abrir GTA Clipper Studio.bat`**, se o `.exe` ainda não foi gerado). Cole o link, escolha YouTube ou Twitch e a quantidade de cortes e clique
+em **INICIAR PROCESSAMENTO**. O programa mostra o andamento, os logs e a biblioteca de vídeos. Ele usa as
+mesmas skills e nunca publica nada. Detalhes em [`gta-clipper-studio/README.md`](gta-clipper-studio/README.md).
+
+---
+
 ## Onde ficam os vídeos
 
 Aperte **Windows + R**, digite um destes e aperte Enter:
