@@ -1,4 +1,4 @@
-# Roda o fluxo de cortes de lives sem interação (Windows).
+﻿# Roda o fluxo de cortes de lives sem interação (Windows).
 #   Automático (streamers de streamers.json):  .\clipper-gta-br\rodar_automatico.ps1
 #   Live(s) específica(s):                     .\clipper-gta-br\rodar_automatico.ps1 -Link URL [-Link URL2] [-Top 2]
 # Agendar todo dia às 4h17 (ajuste o caminho):
@@ -20,6 +20,8 @@ $Log = Join-Path $LogDir ((Get-Date -Format "yyyy-MM-dd_HHmmss") + ".log")
 $env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"
 Set-Location $Repo
 Write-Host "Rodando: $Prompt  (log em $Log)"
+# Avisos do claude no canal de erro não podem derrubar o script (Windows PowerShell 5.1).
+$ErrorActionPreference = "Continue"
 # Libera só o necessário: python (scripts da skill), leitura/escrita de arquivos. Nada de publicar.
 claude -p $Prompt `
   --allowedTools "Bash(python:*)" "PowerShell(python:*)" "Read" "Write" "Glob" `

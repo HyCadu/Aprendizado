@@ -1,5 +1,7 @@
 # Cortes automáticos de GTA em português
 
+> **Primeira vez? Siga o [passo a passo do zero](COMO-USAR.md).**
+
 Fluxo que pega as lives de GTA dos maiores streamers brasileiros e transforma cada uma em até 3 clipes
 verticais (1080x1920) prontos para Shorts / TikTok / Reels: facecam em cima, gameplay embaixo, hook,
 legenda palavra por palavra e texto do post, tudo em pt-BR. Usa a skill
