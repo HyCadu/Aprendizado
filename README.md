@@ -93,6 +93,12 @@ confere pelo áudio). Sem ninguém para responder (automático, GTA Clipper Stud
 No automático, cada canal pode ter `"legenda": "en"` em `canais.json`, e cada streamer `"idioma": "en"`
 (gringo) e `"legenda"` em `streamers.json`. Já tinha instalado a skill de lives antes? Rode o passo 5 de novo.
 
+**Visual dos clipes:** zoom automático nos trechos em que o streamer fala mais alto ou grita, legenda com
+contorno grosso e sombra, e identidade visual: moldura neon roxa fina no contorno do vídeo e a arroba do seu
+perfil no canto superior direito. Para pôr a sua arroba, diga ao Claude `põe a arroba @seuperfil nos cortes`
+(ou rode `python -I .claude/skills/cortes-youtube/scripts/clipper.py brand --handle @seuperfil`). Vale para os
+cortes do YouTube e das lives. Sem arroba configurada, sai só a moldura.
+
 Troque `LINK` pelo endereço do vídeo, por exemplo `https://www.youtube.com/watch?v=abc123`.
 Quando o Claude pedir permissão, escolha **Yes**.
 

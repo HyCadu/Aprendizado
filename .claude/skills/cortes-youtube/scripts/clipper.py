@@ -7,6 +7,7 @@ Commands (run with: python -I scripts/clipper.py <command> ...):
   translate JOB [--to pt]   (vídeo estrangeiro: frases para o Claude traduzir -> translation.json)
   render  JOB [--only 1,3] [--original-captions]
   report  JOB
+  brand   [--handle @perfil] [--frame on|off]   (moldura neon + arroba nos vídeos)
   sheet   VIDEO.mp4
 SOURCE = YouTube / Twitch / Kick VOD link or a local video file.
 """
@@ -153,7 +154,8 @@ def cmd_render(args):
     log(f"== render: {job.name}")
     try:
         meta = cl_render.render_job(job, args.cookies_from_browser, args.cookies, only, args.facecam,
-                                   not args.no_censor, args.caption_lead, args.original_captions)
+                                   not args.no_censor, args.caption_lead, args.original_captions,
+                                   1.0 if args.no_zoom else args.zoom, not args.no_brand)
     except SystemExit as e:
         log(f"  FAILED: {e}")
         return 1
@@ -177,6 +179,27 @@ def cmd_sheet(args):
     out = v.with_name(v.stem + "_sheet.jpg")
     cl_render.contact_sheet(v, out, media_duration(v))
     log(str(out))
+    return 0
+
+
+def cmd_brand(args):
+    """Identidade visual dos renders: moldura neon roxa + arroba do perfil (config.json, vale para todo render)."""
+    from cl_captions import clean_handle
+    from cl_common import load_config, save_config
+    cfg = load_config()
+    brand = {"frame": True, "handle": "", **(cfg.get("brand") or {})}
+    if args.handle is not None:
+        h = clean_handle(args.handle)
+        if args.handle.strip() and not h:
+            log("  FAILED: arroba inválida (use letras, números, ponto e _, até 30)")
+            return 1
+        brand["handle"] = h
+    if args.frame is not None:
+        brand["frame"] = args.frame == "on"
+    if args.handle is not None or args.frame is not None:
+        cfg["brand"] = brand
+        save_config(cfg)
+    log(f"brand: moldura {'on' if brand['frame'] else 'off'}, arroba {brand['handle'] or '(nenhuma)'}")
     return 0
 
 
@@ -226,6 +249,11 @@ def main():
     p.add_argument("--no-censor", action="store_true", help="do not mask swear words in captions and hook")
     p.add_argument("--original-captions", action="store_true",
                    help="ignore translation.json and caption in the video's own language")
+    p.add_argument("--zoom", type=float, default=1.12,
+                   help="punch-in zoom on the loudest / fastest narration (1.12 = 12%%); 1 turns it off")
+    p.add_argument("--no-zoom", action="store_true", help="no zoom on strong narration")
+    p.add_argument("--no-brand", action="store_true",
+                   help="sem a identidade visual (moldura neon + arroba de brand.handle no config.json)")
     p.add_argument("--caption-lead", type=float, default=0.0,
                    help="shift captions in seconds: >0 earlier (they lag the voice), <0 later "
                         "(they run ahead), e.g. --caption-lead=-0.15")
@@ -233,6 +261,10 @@ def main():
 
     p = sub.add_parser("report")
     p.add_argument("job")
+
+    p = sub.add_parser("brand")
+    p.add_argument("--handle", default=None, help='arroba do perfil no canto do vídeo, ex. @perfil ("" tira)')
+    p.add_argument("--frame", default=None, choices=["on", "off"], help="moldura neon roxa no contorno do vídeo")
 
     p = sub.add_parser("sheet")
     p.add_argument("video")
@@ -242,7 +274,8 @@ def main():
         import cl_setup
         return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
     return {"prepare": cmd_prepare, "check": cmd_check, "translate": cmd_translate, "render": cmd_render,
-            "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
+            "report": cmd_report, "sheet": cmd_sheet,
+            "brand": cmd_brand}[args.cmd](args)
 
 
 if __name__ == "__main__":

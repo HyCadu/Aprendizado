@@ -182,6 +182,13 @@ instante de uma palavra (`words.json`) e vendo se a legenda destaca essa palavra
 Ajuste fino manual, só se tudo der ok e ainda parecer fora: `--caption-lead` (positivo adianta, negativo
 atrasa; use `=` com negativo, ex. `--caption-lead=-0.1`).
 
+Visual do render (padrão, sem precisar pedir): zoom de 12% nos trechos de narração mais forte (`--zoom 1.2` mais
+forte, `--no-zoom` desliga) e identidade visual com moldura neon roxa e arroba do perfil, lidas de `brand` em
+`~/.ai-stream-clipper/config.json` (`{"frame": true, "handle": "@perfil"}`; `--no-brand` desliga só neste render).
+Só use `--no-zoom` / `--no-brand` quando o pedido disser.
+Para trocar a arroba ou a moldura (quando o usuário pedir): `clipper.py brand --handle @perfil`
+(`--handle ""` tira a arroba; `--frame off` tira a moldura). Sem arroba configurada, sai só a moldura.
+
 Layouts: sem rosto (o mais comum em gameplay editado) = `gameplay`, um recorte 9:16 seguindo a ação;
 com webcam no canto = `facecam`, rosto em cima e gameplay embaixo. Webcam errada: `--facecam x:y:w:h`
 (pixels do vídeo original, veja `layout_debug.jpg`).
