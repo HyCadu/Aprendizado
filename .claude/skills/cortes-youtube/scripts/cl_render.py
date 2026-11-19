@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from cl_captions import build_ass
+from cl_translate import load as load_translation, translated_words
 from cl_common import (FONTS, Timer, ffmpeg, ffprobe, fmt_dur, fmt_ts, lang_strings, load_config, log,
                        read_json, run, slug, video_stream, write_json, write_text)
 from cl_fetch import download_section
@@ -238,7 +239,7 @@ def manual_layout(box: str, W: int, H: int) -> dict:
 
 
 def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=None, censor=True,
-               caption_lead=0.0) -> dict:
+               caption_lead=0.0, original_captions=False) -> dict:
     t = Timer()
     meta = read_json(job / "job.json")
     meta.setdefault("timings", {})["render_started"] = time.time()
@@ -257,6 +258,12 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
     clips_dir = job / "clips"
     results, todo = [], []
     picks = sorted(chk["picks"], key=lambda q: q["order"])
+    # translated captions (translation.json written by Claude after `translate`), unless turned off
+    tr = {} if original_captions else load_translation(job, [p for p in picks if not only or p["order"] in only])
+    tr_lines = tr.get("lines", {}) if tr else {}
+    cap_lang = tr.get("to", lang) if tr_lines else lang
+    if tr_lines:
+        log(f"  captions: translated to {cap_lang} (translation.json)")
     # pass 1: fetch the minutes we need, sync them, plan the layout
     for p in picks:
         k = p["order"]
@@ -320,6 +327,8 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             log(f"  clip {k}: layout {lay['mode']} (face in {int(lay['face_presence'] * 100)}% of frames)")
             ass = cdir / "captions.ass"
             wsel = [w for w in words if w["e"] > a and w["s"] < b]
+            if k in tr_lines:
+                wsel = translated_words(wsel, tr_lines[k])
             build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
                       lead=caption_lead)
             mp4 = cdir / f"{name}.mp4"
@@ -377,7 +386,8 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             write_json(cdir / "post.json", pt)
             write_text(cdir / "post.md", post_markdown(p, pt, name))
             secs = round(x["secs"] + ct(), 1)
-            write_json(cdir / "clip.json", {"pick": p, "layout": lay, "sync_confidence": round(conf, 3),
+            write_json(cdir / "clip.json", {"pick": p, "layout": lay, "captions_lang": cap_lang if k in tr_lines else lang,
+                                            "sync_confidence": round(conf, 3),
                                             "section_offset": round(off, 3), "sync": sync, "seconds": secs})
             results.append({"order": k, "name": name, "mp4": str(mp4), "sheet": str(cdir / "sheet.jpg"),
                             "post": str(cdir / "post.md"), "start": a, "end": b, "duration": round(dur, 1),

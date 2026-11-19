@@ -4,7 +4,8 @@ Commands (run with: python -I scripts/clipper.py <command> ...):
   setup   [--no-install] [--cpu] [--cookies-from-browser firefox]
   prepare SOURCE [--out DIR] [--lang auto|en|ru|pt] [--top 5] [--smart] [--force-long]
   check   JOB [--top 3]
-  render  JOB [--only 1,3]
+  translate JOB [--to pt]   (vídeo estrangeiro: frases para o Claude traduzir -> translation.json)
+  render  JOB [--only 1,3] [--original-captions]
   report  JOB
   sheet   VIDEO.mp4
 SOURCE = YouTube / Twitch / Kick VOD link or a local video file.
@@ -119,6 +120,25 @@ def cmd_check(args):
     return 0 if not errors else 2
 
 
+def cmd_translate(args):
+    import cl_translate
+    job = Path(args.job).expanduser().resolve()
+    meta = read_json(job / "job.json") or {}
+    if meta.get("language") == args.to:
+        log(f"O vídeo já está em '{args.to}': não precisa traduzir.")
+        return 0
+    try:
+        todo = cl_translate.prepare(job, args.to)
+    except SystemExit as e:
+        log(f"  FAILED: {e}")
+        return 1
+    for k, c in todo["clips"].items():
+        log(f"  clipe {k}: {len(c['src'])} frases")
+    log(f"Leia {job / 'translate.md'} e escreva {job / 'translation.json'} "
+        f"(formato de translation.todo.json, 'lines' = uma linha traduzida por frase)")
+    return 0
+
+
 def cmd_render(args):
     import cl_render
     only = [int(x) for x in args.only.split(",")] if args.only else None
@@ -126,7 +146,7 @@ def cmd_render(args):
     log(f"== render: {job.name}")
     try:
         meta = cl_render.render_job(job, args.cookies_from_browser, args.cookies, only, args.facecam,
-                                   not args.no_censor, args.caption_lead)
+                                   not args.no_censor, args.caption_lead, args.original_captions)
     except SystemExit as e:
         log(f"  FAILED: {e}")
         return 1
@@ -186,12 +206,18 @@ def main():
     p.add_argument("job")
     p.add_argument("--top", type=int, default=None, choices=range(1, MAX_TOP + 1), metavar="1-5")
 
+    p = sub.add_parser("translate")
+    p.add_argument("job")
+    p.add_argument("--to", default="pt", help="language of the captions (default pt = pt-BR)")
+
     p = sub.add_parser("render")
     p.add_argument("job")
     p.add_argument("--only", default=None, help="render only these picks, e.g. 1,3")
     p.add_argument("--facecam", default=None,
                    help="manual webcam box x:y:w:h in source pixels (see layout_debug.jpg) if detection is wrong; full:X = one 9:16 crop centred on source x (IRL, wrong person)")
     p.add_argument("--no-censor", action="store_true", help="do not mask swear words in captions and hook")
+    p.add_argument("--original-captions", action="store_true",
+                   help="ignore translation.json and caption in the video's own language")
     p.add_argument("--caption-lead", type=float, default=0.0,
                    help="shift captions in seconds: >0 earlier (they lag the voice), <0 later "
                         "(they run ahead), e.g. --caption-lead=-0.15")
@@ -207,7 +233,7 @@ def main():
     if args.cmd == "setup":
         import cl_setup
         return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
-    return {"prepare": cmd_prepare, "check": cmd_check, "render": cmd_render,
+    return {"prepare": cmd_prepare, "check": cmd_check, "translate": cmd_translate, "render": cmd_render,
             "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
 
 

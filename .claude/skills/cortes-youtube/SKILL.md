@@ -1,6 +1,6 @@
 ---
 name: cortes-youtube
-description: Cortes de vídeos do YouTube de gameplay de GTA editado (até 60 min). Transforma um vídeo (link do YouTube ou arquivo local) em até 5 clipes verticais 1080x1920 prontos para Shorts / TikTok / Reels / X - gameplay em 9:16 (ou facecam em cima, se houver), hook, legenda palavra por palavra e texto do post em pt-BR. Sem API key - o Claude escolhe os momentos pela transcrição. Clone adaptado do ai-stream-clipper (MIT). Use quando o usuário disser "corta esse vídeo", "faz cortes desse vídeo do YouTube", "cortes de gameplay", "/cortes-youtube", ou quando a tarefa agendada de cortes do YouTube rodar. Para lives longas use a ai-stream-clipper / clipar-gta-br.
+description: Cortes de vídeos do YouTube de gameplay de GTA editado (até 60 min). Transforma um vídeo (link do YouTube ou arquivo local) em até 5 clipes verticais 1080x1920 prontos para Shorts / TikTok / Reels / X - gameplay em 9:16 (ou facecam em cima, se houver), hook, legenda palavra por palavra e texto do post em pt-BR; vídeo em inglês (ou outro idioma) ganha legenda traduzida para pt-BR. Sem API key - o Claude escolhe os momentos pela transcrição. Clone adaptado do ai-stream-clipper (MIT). Use quando o usuário disser "corta esse vídeo", "faz cortes desse vídeo do YouTube", "cortes de gameplay", "/cortes-youtube", ou quando a tarefa agendada de cortes do YouTube rodar. Para lives longas use a ai-stream-clipper / clipar-gta-br.
 ---
 
 # Cortes YouTube (gameplay de GTA editado, até 60 min)
@@ -59,6 +59,8 @@ clipper.py prepare <link-ou-arquivo> --lang pt --top N [--out DIR]
 ```
 
 `--lang pt` sempre para vídeo brasileiro (com música e efeitos, a detecção automática erra).
+**Vídeo estrangeiro** (inglês, espanhol...): use o idioma falado (`--lang en`); a transcrição e os tempos
+saem do áudio original, e a legenda em pt-BR vem do passo 4b. Hook, título e post continuam em pt-BR.
 Baixa só o áudio. Termina com `PREPARED <pasta do job>` (padrão `~/CortesYouTube/<canal>_<id>/`).
 Trechos de 5 min. Por padrão **todos** os trechos ficam marcados READ FIRST (vídeo curto = barato ler
 tudo). `--smart` volta ao modo econômico (~40%) se o usuário pedir para gastar menos.
@@ -128,12 +130,30 @@ sobreposição, começo com enrolação, frase cortada no meio, tamanho do hook.
 WARN corrija ou tenha certeza de que está bom, e rode de novo. Leia `<job>/moments.check.md`: as primeiras
 palavras precisam prender, as últimas precisam ser o desfecho.
 
+## 4b. Traduzir a legenda (só vídeo estrangeiro)
+
+Se `language` em `<job>/job.json` não é `pt`, a legenda sai em pt-BR por padrão (o usuário pode pedir a
+original: aí pule este passo ou renderize com `--original-captions`).
+1. `clipper.py translate <job>` divide a fala de cada clipe em frases curtas com tempo exato e escreve
+   `<job>/translate.md` (para ler) e `<job>/translation.todo.json` (modelo).
+2. Leia `translate.md` e escreva `<job>/translation.json` com a ferramenta Write, no formato do modelo:
+   por clipe, o mesmo `key` e `lines` com **exatamente uma linha por frase, na mesma ordem**
+   (`""` para barulho ou frase sem sentido).
+3. Como traduzir: pt-BR natural de canal de cortes, curto, falado ("Puta merda!", "Bora, porra!",
+   "Esse jogo é de outra geração"). Adapte gíria e palavrão, não traduza palavra por palavra. Mantenha nomes
+   próprios (Lucia, Brian, condados). Cada linha aparece só enquanto a frase original é falada: frase de
+   1 s pede tradução de 2-4 palavras. A censura de palavrão vale para o português também.
+Se mudar um corte depois, rode `check` e `translate` de novo: o render recusa `translation.json` velho.
+
 ## 5. Renderizar
 
 `clipper.py render <job>` baixa só os minutos necessários (até 1440p), sincroniza com a transcrição,
 detecta facecam se houver, monta o 1080x1920, queima legendas e codifica H.264/AAC. Por clipe, em
 `<job>/clips/NN_titulo/`: `.mp4`, `post.md`, `sheet.jpg` (12 quadros), `layout_debug.jpg`.
 `--only 2` refaz um clipe. Palavrões saem mascarados (P*RRA); `--no-censor` desliga.
+Com `translation.json` o log mostra `captions: translated to pt`: cada frase traduzida fica na tela no
+intervalo da frase original e as palavras acendem distribuídas nesse intervalo (não palavra a palavra com o
+áudio, porque a ordem das palavras muda entre idiomas). O check de sincronia continua valendo.
 **Sincronia fala x legenda (critério obrigatório).** Para cada clipe o render mede no `.mp4` pronto:
 1. `speech`: onde o áudio do clipe cai no áudio original (que a transcrição cronometrou). Tolerância 40 ms;
    fora disso recodifica sozinho com o corte corrigido.
