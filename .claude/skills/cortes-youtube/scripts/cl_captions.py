@@ -16,6 +16,9 @@ HOOK_SIZE = 76
 HOOK_SIZES = (80, 76, 72, 68)
 HOOK_MAX_W = 940
 MAX_W = 900            # max caption line width, px (frame is 1080)
+CAP_OUTLINE = 9        # contorno preto da legenda, px
+CAP_SHADOW = 5         # deslocamento da sombra, px
+CAP_GLOW = 20          # raio do halo escuro desfocado, px
 HIGHLIGHT = "&H0000E6FF&"   # #FFE600 in ASS BGR
 WHITE = "&H00FFFFFF&"
 EMOJI = re.compile("[\U0001F000-\U0001FFFF☀-➿️‍]")
@@ -158,6 +161,68 @@ def wrap(text: str, size: float, max_w: float, path) -> list:
     return lines
 
 
+# ---------------------------------------------------------------- identidade visual (moldura neon + arroba)
+BRAND_FONT_FILE = FONTS / "Montserrat-ExtraBold.ttf"
+BRAND_FONT = "Montserrat ExtraBold"
+NEON = "&HFF26B0&"        # roxo neon #B026FF em BGR
+FRAME_INSET = 0           # distância dos fios até a borda do vídeo, px (0 = no contorno do vídeo)
+FRAME_T = 3               # espessura dos quatro fios, px
+HANDLE_SIZE = 32
+HANDLE_RE = re.compile(r"^@?[A-Za-z0-9_.]{1,30}$")
+
+
+def clean_handle(h) -> str:
+    """'leonidacortes3' / '@leonidacortes3' -> '@leonidacortes3'; qualquer outra coisa -> ''."""
+    h = (h or "").strip()
+    return ("@" + h.lstrip("@")) if HANDLE_RE.match(h) else ""
+
+
+def _rect(x, y, w, h) -> str:
+    return f"m {x} {y} l {x + w} {y} l {x + w} {y + h} l {x} {y + h}"
+
+
+def frame_rects() -> list:
+    """Os quatro fios (x, y, w, h). Cada um vira um evento próprio: o libass gera bitmaps finos em vez de um
+    bitmap do tamanho do vídeo, que o ffmpeg teria de misturar em todo quadro (deixava o render ~3x mais lento).
+    Os horizontais vão de ponta a ponta e os verticais começam/terminam no fio de cima/baixo: cantos fechados
+    sem sobreposição."""
+    i, t = FRAME_INSET, FRAME_T
+    W, H = 1080 - 2 * i, 1920 - 2 * i
+    return [(i, i, W, t), (i, 1920 - i - t, W, t),
+            (i, i + t, t, H - 2 * t), (1080 - i - t, i + t, t, H - 2 * t)]
+
+
+def handle_box(handle: str):
+    """Caixa da arroba no canto superior direito, logo abaixo do fio de cima: (x0, y0, w, h)."""
+    tw = text_width(handle, HANDLE_SIZE, BRAND_FONT_FILE)
+    w, h = round(tw + 2 * 16), HANDLE_SIZE + 16
+    x0 = 1080 - FRAME_INSET - FRAME_T - 30 - w      # 30 px da lateral direita
+    y0 = FRAME_INSET + FRAME_T + 22                 # 22 px abaixo do fio de cima
+    return x0, y0, w, h
+
+
+def brand_events(brand: dict, dur: float) -> list:
+    out = []
+    end = ass_time(dur + 1)
+    if brand.get("frame", True):
+        for x, y, w, h in frame_rects():
+            r = _rect(0, 0, w, h)
+            # brilho: o mesmo fio, desfocado e translúcido (discreto); por cima, o fio nítido
+            out.append(f"Dialogue: 5,{ass_time(0)},{end},Box,,0,0,0,,{{\\an7\\pos({x},{y})\\1c{NEON}\\3c{NEON}"
+                       f"\\1a&H70&\\3a&H90&\\bord2\\shad0\\blur6\\p1}}{r}{{\\p0}}")
+            out.append(f"Dialogue: 6,{ass_time(0)},{end},Box,,0,0,0,,{{\\an7\\pos({x},{y})\\1c{NEON}\\1a&H00&"
+                       f"\\bord0\\shad0\\p1}}{r}{{\\p0}}")
+    handle = clean_handle(brand.get("handle"))
+    if handle:
+        x0, y0, w, h = handle_box(handle)
+        # fundo preto ~65% transparente (alpha A6) com contorno roxo fino
+        out.append(f"Dialogue: 6,{ass_time(0)},{end},Box,,0,0,0,,{{\\an7\\pos({x0},{y0})\\1c&H000000&\\1a&HA6&"
+                   f"\\3c{NEON}\\3a&H00&\\bord2\\shad0\\p1}}{_rect(0, 0, w, h)}{{\\p0}}")
+        out.append(f"Dialogue: 7,{ass_time(0)},{end},Brand,,0,0,0,,{{\\an5\\pos({x0 + w / 2:.0f},{y0 + h / 2:.0f})}}"
+                   + esc(handle))
+    return out
+
+
 def face_top_out(seg):
     """Where the top of the face lands in the 1080x1920 output (None if no face)."""
     if not isinstance(seg, dict) or "face" not in seg:
@@ -170,8 +235,9 @@ def face_top_out(seg):
     return (fy - y) / h * 1920.0
 
 
-def place_hook(hook: str, seg):
-    """Big hook at the top of the frame, above the face. Returns (lines, size, plate_top)."""
+def place_hook(hook: str, seg, min_top: float = 24):
+    """Big hook at the top of the frame, above the face. Returns (lines, size, plate_top).
+    min_top: com a arroba no canto, o hook começa abaixo dela para não cobri-la."""
     face_top = face_top_out(seg)
     limit = (face_top + 4) if face_top is not None else 700   # YuNet's face box starts at the brows
     for size in HOOK_SIZES:
@@ -179,8 +245,8 @@ def place_hook(hook: str, seg):
         if len(hl) > 2:
             continue
         plate = len(hl) * size + 44
-        top = min(70, limit - plate)
-        if top >= 24:
+        top = min(max(70, min_top), limit - plate)
+        if top >= min_top:
             return hl, size, top
     # no room above the face: at the seam between the panels (chest / gameplay top)
     for size in HOOK_SIZES:
@@ -192,7 +258,7 @@ def place_hook(hook: str, seg):
 
 
 def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs: float = 2.6, censor_on=True,
-              lead: float = 0.0):
+              lead: float = 0.0, brand: dict | None = None):
     global CENSOR
     CENSOR = censor_on
     mode = segments if isinstance(segments, str) else segments[0]["mode"]
@@ -213,16 +279,28 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
         "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
         "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        f"Style: Cap,{CAP_FONT},{CAP_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,1,0,1,7,3,2,60,60,0,1",
+        # contorno preto grosso + sombra deslocada quase opaca (legível sobre gameplay claro)
+        f"Style: Cap,{CAP_FONT},{CAP_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H30000000,0,0,0,0,100,100,1,0,1,"
+        f"{CAP_OUTLINE},{CAP_SHADOW},2,60,60,0,1",
+        # halo escuro desfocado atrás da legenda (só o contorno, sem preenchimento)
+        f"Style: CapGlow,{CAP_FONT},{CAP_SIZE},&HFF000000,&HFF000000,&H50000000,&HFF000000,0,0,0,0,100,100,1,0,1,"
+        f"{CAP_GLOW},0,2,60,60,0,1",
         f"Style: Hook,{HOOK_FONT},{HOOK_SIZE},&H00101010,&H00101010,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,40,40,0,1",
         "Style: Box,Arial,20,&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H64000000,0,0,0,0,100,100,0,0,1,0,6,7,0,0,0,1",
+        f"Style: Brand,{BRAND_FONT},{HANDLE_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,"
+        "0,0,5,0,0,0,1",
         "", "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
+    # identidade visual: moldura neon + arroba, fixas o vídeo todo
+    brand = brand or {}
+    lines += brand_events(brand, dur)
+    handle = clean_handle(brand.get("handle"))
+    min_top = (handle_box(handle)[1] + handle_box(handle)[3] + 12) if handle else 24
     # hook title
     hook = censor(EMOJI.sub("", hook or "").strip())
     if hook:
-        hl, size, top = place_hook(hook, seg0)
+        hl, size, top = place_hook(hook, seg0, min_top)
         tw = max(text_width(x, size, HOOK_FONT_FILE) for x in hl)
         pad_x, pad_y = 38, 22
         bw, bh = tw + 2 * pad_x, len(hl) * size + 2 * pad_y
@@ -260,6 +338,8 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
                 else:
                     parts.append(esc(t))
             pre = f"{{\\an2\\pos(540,{cap_y})\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}}}"
+            glow = f"{{\\an2\\pos(540,{cap_y})\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}\\blur12}}"
+            lines.append(f"Dialogue: 0,{ass_time(s)},{ass_time(e)},CapGlow,,0,0,0,,{glow}" + " ".join(parts))
             lines.append(f"Dialogue: 1,{ass_time(s)},{ass_time(e)},Cap,,0,0,0,,{pre}" + " ".join(parts))
     write_text(out, "\n".join(lines) + "\n")
     return {"groups": len(groups), "words": len(ws)}

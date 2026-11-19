@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .core import AI_STREAM_CLIPPER, CLIPPER_CONFIG, SKILLS
-from .storage import read_json
+from .storage import read_json, write_json
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 SCRIPTS = SKILLS / "cortes-youtube" / "scripts"
@@ -81,6 +81,27 @@ def gpu_info() -> dict:
 
 def clipper_config() -> dict:
     return read_json(CLIPPER_CONFIG, {}) or {}
+
+
+HANDLE_RE = re.compile(r"^@?[A-Za-z0-9_.]{1,30}$")   # mesma regra do cl_captions.clean_handle
+
+
+def brand_config() -> dict:
+    """Identidade visual dos vídeos (moldura neon + arroba), lida pelo render das duas skills."""
+    return {"frame": True, "handle": "", **(clipper_config().get("brand") or {})}
+
+
+def save_brand(frame: bool, handle: str) -> str:
+    """Grava a marca no config.json das skills (mantém o resto). Retorna a arroba normalizada ('' = sem arroba).
+    Arroba inválida -> ValueError."""
+    handle = handle.strip()
+    if handle and not HANDLE_RE.match(handle):
+        raise ValueError("Arroba inválida: use só letras, números, ponto e _ (até 30).")
+    handle = ("@" + handle.lstrip("@")) if handle else ""
+    cfg = clipper_config()
+    cfg["brand"] = {"frame": bool(frame), "handle": handle}
+    write_json(CLIPPER_CONFIG, cfg)
+    return handle
 
 
 def check_all(claude_custom: str = "") -> list[Check]:

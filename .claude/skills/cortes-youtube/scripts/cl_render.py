@@ -158,17 +158,108 @@ def _chain(lay: dict, src: str, dst: str) -> str:
     return f"[{src}]crop={w}:{h}:{x}:{y},scale={OUT_W}:{OUT_H}:flags=lanczos,setsar=1[{dst}]"
 
 
-def filter_graph(lay: dict, ass_rel: str) -> str:
+ZOOM = 1.12            # punch-in nos trechos de narração mais intensa (1 = desliga)
+ZOOM_MAX_SHARE = 0.30  # no máximo 30% do clipe com zoom
+ZOOM_MIN_SCORE = 1.5   # quanto acima da fala "normal" do clipe o trecho precisa estar (dB + bônus)
+
+
+def speech_zooms(section: Path, off: float, dur: float, words, a: float, sr: int = 8000) -> list:
+    """Trechos (segundos do clipe) em que o narrador fala mais alto / mais rápido que o normal do clipe.
+    Frases = palavras com pausa < 0.4 s; nota = volume (dB acima da mediana das frases) + 0.5 x velocidade
+    (palavras/s acima da mediana) + 1.5 se tem "!". As melhores acima de ZOOM_MIN_SCORE ganham zoom."""
+    ws = sorted((max(0.0, w["s"] - a), min(dur, w["e"] - a), w.get("w", "")) for w in words
+                if w["e"] - a > 0.05 and w["s"] - a < dur - 0.05)
+    if len(ws) < 6:
+        return []
+    x = _pcm(section, off, dur, sr)
+    hop = int(0.05 * sr)
+    n = len(x) // hop
+    if n < 40:
+        return []
+    db = 20 * np.log10(np.sqrt((x[: n * hop].reshape(n, hop) ** 2).mean(1)) + 1e-6)
+    phrases = []
+    for s, e, t in ws:
+        if phrases and s - phrases[-1][1] < 0.4 and e - phrases[-1][0] <= 4.0:
+            phrases[-1][1] = max(phrases[-1][1], e)
+            phrases[-1][2] += 1
+            phrases[-1][3] += t.count("!")
+        else:
+            phrases.append([s, e, 1, t.count("!")])
+    rows = []
+    for s, e, cnt, excl in phrases:
+        if e - s < 0.6:
+            continue
+        seg = db[int(s / 0.05): max(int(s / 0.05) + 1, int(e / 0.05))]
+        if len(seg):
+            rows.append((s, e, float(np.percentile(seg, 90)), cnt / (e - s), excl))
+    if len(rows) < 3:
+        return []
+    med_l = float(np.median([r[2] for r in rows]))
+    med_r = float(np.median([r[3] for r in rows]))
+    # volume pesa mais; velocidade ajuda; "!" (o Whisper marca grito/exclamação) dá um bônus
+    scored = sorted(((r[2] - med_l) + 0.5 * (r[3] - med_r) + (1.5 if r[4] else 0.0), r[0], r[1])
+                    for r in rows)[::-1]
+    picked, used = [], 0.0
+    for sc, s, e in scored:
+        if sc < ZOOM_MIN_SCORE or used + (e - s) > ZOOM_MAX_SHARE * dur:
+            continue
+        picked.append([max(0.0, s - 0.05), min(dur, e + 0.25)])
+        used += e - s
+    picked.sort()
+    merged = []
+    for s, e in picked:                  # zooms quase colados viram um só (sem pisca-pisca)
+        if merged and s - merged[-1][1] < 0.8:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    return [[round(s, 2), round(e, 2)] for s, e in merged]
+
+
+def zoom_chain(lay: dict, zooms: list, src: str, z: float) -> tuple:
+    """Punch-in nas janelas `zooms`: no modo facecam só a câmera (painel de cima) aproxima; nos outros, o quadro
+    inteiro. A legenda e o hook entram depois (filtro ass), então não são afetados."""
+    if not zooms or z <= 1.0:
+        return "", src
+    segs = lay["segments"]
+
+    def mode_at(t):
+        for sg in segs:
+            if sg.get("t0", 0.0) <= t < sg.get("t1", 1e9):
+                return sg["mode"]
+        return segs[-1]["mode"]
+
+    regions = {}
+    for s, e in zooms:
+        regions.setdefault("cam" if mode_at((s + e) / 2) == "facecam" else "full", []).append((s, e))
+    parts, cur = [], src
+    for i, (reg, wins) in enumerate(sorted(regions.items())):
+        H = TOP_H if reg == "cam" else OUT_H
+        cw, ch = int(OUT_W / z) // 2 * 2, int(H / z) // 2 * 2
+        cx, cy = (OUT_W - cw) // 2, int((H - ch) * 0.42)   # um pouco acima do centro: rosto / ação
+        en = "+".join(f"between(t,{s:.2f},{e:.2f})" for s, e in wins)
+        parts.append(f"[{cur}]split=2[zb{i}][zs{i}];"
+                     f"[zs{i}]crop={cw}:{ch}:{cx}:{cy},scale={OUT_W}:{H}:flags=lanczos[zi{i}];"
+                     f"[zb{i}][zi{i}]overlay=0:0:enable='{en}'[zo{i}]")
+        cur = f"zo{i}"
+    return ";".join(parts), cur
+
+
+def filter_graph(lay: dict, ass_rel: str, zooms=None, z: float = ZOOM) -> str:
     tail = f"format=yuv420p,ass=filename={ass_rel}:fontsdir=fonts[v]"
     segs = lay["segments"]
     if len(segs) == 1:
-        return f"[0:v]null[s0];" + _chain(segs[0], "s0", "o0") + f";[o0]{tail}"
-    parts = [f"[0:v]split={len(segs)}" + "".join(f"[i{k}]" for k in range(len(segs)))]
-    for k, sg in enumerate(segs):
-        parts.append(f"[i{k}]trim=start={sg['t0']:.3f}:end={sg['t1']:.3f},setpts=PTS-STARTPTS[s{k}]")
-        parts.append(_chain(sg, f"s{k}", f"o{k}"))
-    parts.append("".join(f"[o{k}]" for k in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=0[cat]")
-    parts.append(f"[cat]{tail}")
+        parts, last = [f"[0:v]null[s0]", _chain(segs[0], "s0", "o0")], "o0"
+    else:
+        parts = [f"[0:v]split={len(segs)}" + "".join(f"[i{k}]" for k in range(len(segs)))]
+        for k, sg in enumerate(segs):
+            parts.append(f"[i{k}]trim=start={sg['t0']:.3f}:end={sg['t1']:.3f},setpts=PTS-STARTPTS[s{k}]")
+            parts.append(_chain(sg, f"s{k}", f"o{k}"))
+        parts.append("".join(f"[o{k}]" for k in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=0[cat]")
+        last = "cat"
+    zc, last = zoom_chain(lay, zooms or [], last, z)
+    if zc:
+        parts.append(zc)
+    parts.append(f"[{last}]{tail}")
     return ";".join(parts)
 
 
@@ -239,7 +330,7 @@ def manual_layout(box: str, W: int, H: int) -> dict:
 
 
 def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=None, censor=True,
-               caption_lead=0.0, original_captions=False) -> dict:
+               caption_lead=0.0, original_captions=False, zoom=ZOOM, brand=True) -> dict:
     t = Timer()
     meta = read_json(job / "job.json")
     meta.setdefault("timings", {})["render_started"] = time.time()
@@ -250,6 +341,11 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
     words = read_json(job / "transcript" / "words.json", [])
     lang = meta.get("language", "en")
     cfg = load_config()
+    # identidade visual (moldura neon + arroba): config "brand" em ~/.ai-stream-clipper/config.json,
+    # igual para as duas skills; ligada por padrão, --no-brand desliga neste render
+    brand_cfg = {"frame": False, "handle": ""} if not brand else {"frame": True, "handle": "", **(cfg.get("brand") or {})}
+    if brand_cfg.get("frame") or brand_cfg.get("handle"):
+        log(f"  marca: moldura {'sim' if brand_cfg.get('frame') else 'não'}, arroba {brand_cfg.get('handle') or '-'}")
     fonts = job / "fonts"
     fonts.mkdir(exist_ok=True)
     for f in FONTS.glob("*.ttf"):
@@ -330,10 +426,17 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             if k in tr_lines:
                 wsel = translated_words(wsel, tr_lines[k])
             build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
-                      lead=caption_lead)
+                      lead=caption_lead, brand=brand_cfg)
             mp4 = cdir / f"{name}.mp4"
             rel_ass = ass.relative_to(job).as_posix()
-            fg = filter_graph(lay, rel_ass)
+            zooms = []
+            if zoom > 1.0:
+                try:
+                    zooms = speech_zooms(section, off, dur, [w for w in words if w["e"] > a and w["s"] < b], a)
+                except Exception as ze:
+                    log(f"    zoom: skipped ({str(ze)[:120]})")
+                log(f"    zoom: {len(zooms)} trecho(s) de narração forte" if zooms else "    zoom: nenhum trecho")
+            fg = filter_graph(lay, rel_ass, zooms, zoom)
             fade_out = max(0.0, dur - 0.15)
             af = f"loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:d=0.06,afade=t=out:st={fade_out:.2f}:d=0.15"
             def encode(seek):
@@ -387,7 +490,7 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             write_text(cdir / "post.md", post_markdown(p, pt, name))
             secs = round(x["secs"] + ct(), 1)
             write_json(cdir / "clip.json", {"pick": p, "layout": lay, "captions_lang": cap_lang if k in tr_lines else lang,
-                                            "sync_confidence": round(conf, 3),
+                                            "sync_confidence": round(conf, 3), "zooms": zooms,
                                             "section_offset": round(off, 3), "sync": sync, "seconds": secs})
             results.append({"order": k, "name": name, "mp4": str(mp4), "sheet": str(cdir / "sheet.jpg"),
                             "post": str(cdir / "post.md"), "start": a, "end": b, "duration": round(dur, 1),

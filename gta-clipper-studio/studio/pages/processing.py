@@ -253,7 +253,8 @@ class Processing(Page):
             return False
         try:
             argv, prompt = build_command(claude, job["url"], job["platform"], job["clips"], out,
-                                         job.get("lang", AUTO_LANG), job.get("original_captions", False))
+                                         job.get("lang", AUTO_LANG), job.get("original_captions", False),
+                                     job.get("zoom", True))
         except ValueError as e:
             QMessageBox.warning(self, "Pasta inválida", str(e))
             return False

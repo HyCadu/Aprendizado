@@ -74,6 +74,34 @@ class LinkTests(unittest.TestCase):
         _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "pt")
         self.assertEqual(p, f"/clipar-gta-br {TW} (só 2 cortes por live)")  # igual ao rodar_automatico.ps1
 
+    def test_zoom(self):
+        _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None)
+        self.assertNotIn("--no-zoom", p)  # zoom é o padrão do render
+        _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, zoom=False)
+        self.assertIn("--no-zoom", p)
+        _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "pt", zoom=False)
+        self.assertEqual(p, f"/clipar-gta-br {TW} (só 2 cortes por live)" + core.NO_ZOOM_HINT)
+        self.assertTrue(storage.Settings.DEFAULTS["zoom_on_narration"])
+
+    def test_brand_config(self):
+        from studio import system
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / "config.json"
+            cfg.write_text(json.dumps({"encoder": "h264_nvenc"}), encoding="utf-8")
+            old, system.CLIPPER_CONFIG = system.CLIPPER_CONFIG, cfg
+            try:
+                self.assertEqual(system.brand_config(), {"frame": True, "handle": ""})
+                self.assertEqual(system.save_brand(True, "leonidacortes3"), "@leonidacortes3")
+                data = json.loads(cfg.read_text(encoding="utf-8"))
+                self.assertEqual(data["encoder"], "h264_nvenc")  # resto da config intacto
+                self.assertEqual(data["brand"], {"frame": True, "handle": "@leonidacortes3"})
+                with self.assertRaises(ValueError):
+                    system.save_brand(True, "@a b; rm")
+                self.assertEqual(system.save_brand(False, ""), "")
+                self.assertEqual(system.brand_config(), {"frame": False, "handle": ""})
+            finally:
+                system.CLIPPER_CONFIG = old
+
     def test_language_events(self):
         evs = core.language_events("  whisper: language = en\nPREPARED C:\\job")
         self.assertEqual(evs[0].data, {"lang": "en"})

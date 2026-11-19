@@ -162,6 +162,10 @@ class NewJob(Page):
         self.keep_orig.setCursor(Qt.PointingHandCursor)
         self.keep_orig.toggled.connect(self._on_lang)
         v4.addWidget(self.keep_orig)
+        self.zoom = QCheckBox("Zoom nos momentos de narração forte")
+        self.zoom.setToolTip("Aproxima a câmera (ou o quadro inteiro) quando o streamer fala mais alto ou grita.")
+        self.zoom.setCursor(Qt.PointingHandCursor)
+        v4.addWidget(self.zoom)
         self.body.addWidget(self.c4)
 
         # iniciar
@@ -198,6 +202,7 @@ class NewJob(Page):
         last_lang = state.settings["last_lang"]
         self.lbtns.get(last_lang if last_lang in LANGS else AUTO_LANG).setChecked(True)
         self.keep_orig.setChecked(bool(state.settings["keep_original_captions"]))
+        self.zoom.setChecked(bool(state.settings["zoom_on_narration"]))
         self._on_lang()
         self._on_url("")
 
@@ -294,5 +299,7 @@ class NewJob(Page):
         job["lang"] = lang
         self.state.settings["keep_original_captions"] = self.keep_orig.isChecked()
         job["original_captions"] = self.keep_orig.isChecked() and lang != "pt"
+        self.state.settings["zoom_on_narration"] = self.zoom.isChecked()
+        job["zoom"] = self.zoom.isChecked()
         self.state.settings.save()
         self.state.job_started.emit(job)

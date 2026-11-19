@@ -163,7 +163,8 @@ def lang_name(code: str) -> str:
     return LANG_NAMES.get((code or "").lower(), code or "?")
 
 
-ORIGINAL_HINT = "; mantenha a legenda no idioma original: pule o translate e renderize com --original-captions"
+NO_ZOOM_HINT = " (sem zoom: renderize com --no-zoom)"
+ORIGINAL_HINT ="; mantenha a legenda no idioma original: pule o translate e renderize com --original-captions"
 
 
 def live_language_hint(lang: str, original_captions: bool = False) -> str:
@@ -198,7 +199,8 @@ def language_hint(lang: str, original_captions: bool) -> str:
 
 
 def build_command(claude: str, url: str, platform: str, clips: int, out_dir: Path | None,
-                  lang: str = AUTO_LANG, original_captions: bool = False) -> tuple[list[str], str]:
+                  lang: str = AUTO_LANG, original_captions: bool = False,
+                  zoom: bool = True) -> tuple[list[str], str]:
     """Mesmo prompt dos rodar_automatico.ps1 (+ dica de idioma). Retorna (argv, prompt)."""
     clips = max(1, min(int(clips), MAX_CLIPS[platform]))
     if platform == YOUTUBE:
@@ -209,6 +211,8 @@ def build_command(claude: str, url: str, platform: str, clips: int, out_dir: Pat
     else:
         prompt = f"/clipar-gta-br {url} (só {clips} cortes por live)" + live_language_hint(lang, original_captions)
         default_out, extra = DEFAULT_TW_OUT, ["--add-dir", str(AI_STREAM_CLIPPER)]
+    if not zoom:   # o zoom na narração forte é o padrão do render; desligado, a skill recebe --no-zoom
+        prompt += NO_ZOOM_HINT
     out = Path(out_dir) if out_dir else default_out
     if out.resolve() != default_out.resolve():
         prompt += f' (salve o job com --out "{_safe_dir(out)}" no prepare)'

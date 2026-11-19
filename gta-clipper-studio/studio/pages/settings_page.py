@@ -3,13 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLineEdit, QVBoxLayout,
+                               QWidget)
 
 from .. import __version__
 from .. import theme as T
 from ..core import DEFAULT_TW_OUT, DEFAULT_YT_OUT, REPO, TWITCH, YOUTUBE
 from ..storage import DATA_DIR, LOG_DIR
-from ..system import find_claude
+from ..system import brand_config, find_claude, save_brand
 from ..widgets import AdaptiveBox, FlowLayout, Icon, NeonProgress, Spinner, badge, card, icon_button, label
 from .common import Page, open_folder
 
@@ -112,6 +113,33 @@ class Settings(Page):
         v.addLayout(cl)
         self.body.addWidget(c)
 
+        # identidade visual (vai para o config.json das skills: vale para todos os cortes, até os automáticos)
+        bc = card("CardFlat")
+        bv = QVBoxLayout(bc)
+        bv.setContentsMargins(22, 18, 22, 18)
+        bv.setSpacing(8)
+        bv.addWidget(label("Identidade visual", "SectionTitle"))
+        brand = brand_config()
+        self.frame = QCheckBox("Moldura neon roxa (quatro fios finos nas bordas)")
+        self.frame.setCursor(Qt.PointingHandCursor)
+        self.frame.setChecked(bool(brand.get("frame", True)))
+        bv.addWidget(self.frame)
+        hr = QHBoxLayout()
+        hr.addWidget(label("Arroba do perfil"))
+        self.handle = QLineEdit(brand.get("handle") or "")
+        self.handle.setPlaceholderText("@seuperfil (vazio = sem arroba)")
+        self.handle.setMaxLength(31)
+        self.handle.returnPressed.connect(self._save_brand)
+        hr.addWidget(self.handle, 1)
+        sb = icon_button("Salvar", "check", "Ghost")
+        sb.clicked.connect(self._save_brand)
+        hr.addWidget(sb)
+        bv.addLayout(hr)
+        self.frame.toggled.connect(self._save_brand)
+        bv.addWidget(label("A arroba fica no canto superior direito, abaixo do fio de cima. Vale para todos os "
+                           "próximos cortes (YouTube e lives), inclusive os automáticos.", "Dim", wrap=True))
+        self.body.addWidget(bc)
+
         row_w = AdaptiveBox(820, 14)
         row = row_w.box
         # dependências
@@ -213,6 +241,18 @@ class Settings(Page):
 
     def on_hide(self):
         self.gpu_timer.stop()
+
+    def _save_brand(self, *_):
+        try:
+            h = save_brand(self.frame.isChecked(), self.handle.text())
+        except ValueError as e:
+            self.state.toast.emit(str(e), "error")
+            return
+        except OSError as e:
+            self.state.toast.emit(f"Não consegui salvar: {e}", "error")
+            return
+        self.handle.setText(h)
+        self.state.toast.emit("Identidade visual salva.", "info")
 
     def _choose_claude(self):
         f, _ = QFileDialog.getOpenFileName(self, "Onde está o claude.exe?", str(Path.home()), "claude (*.exe *.cmd)")

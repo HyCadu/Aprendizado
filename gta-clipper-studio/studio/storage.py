@@ -42,6 +42,7 @@ class Settings:
         "last_clips": 3,
         "last_lang": "auto",
         "keep_original_captions": False,
+        "zoom_on_narration": True,
     }
 
     def __init__(self, path: Path = SETTINGS_FILE):

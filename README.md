@@ -89,6 +89,11 @@ clipes escolhidos, no mesmo estilo palavra por palavra. Sem ninguém para respon
 Studio) a legenda sai em português; no automático, cada canal pode ter `"legenda": "en"` em `canais.json`.
 **Lives gringas** saem com legenda em português. Já tinha instalado a skill de lives antes? Rode o passo 5 de novo.
 
+**Visual dos clipes:** zoom automático nos trechos em que o streamer fala mais alto ou grita, legenda com
+contorno grosso e sombra, e identidade visual (moldura neon roxa fina no contorno do vídeo + arroba do perfil no
+canto superior direito). A arroba e a moldura ficam em **Configurações > Identidade visual** do GTA Clipper Studio
+(ou em `brand` no `~/.ai-stream-clipper/config.json`); o zoom tem uma caixa em **Novo corte**.
+
 Troque `LINK` pelo endereço do vídeo, por exemplo `https://www.youtube.com/watch?v=abc123`.
 Quando o Claude pedir permissão, escolha **Yes**.
 
