@@ -2,3 +2,4 @@
 # O .patch com CRLF não aplica; scripts .sh com CRLF quebram no bash.
 *.patch -text
 *.sh    text eol=lf
+*.bat   text eol=crlf
