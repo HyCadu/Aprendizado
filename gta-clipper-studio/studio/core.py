@@ -163,17 +163,25 @@ def lang_name(code: str) -> str:
     return LANG_NAMES.get((code or "").lower(), code or "?")
 
 
-def live_language_hint(lang: str) -> str:
+ORIGINAL_HINT = "; mantenha a legenda no idioma original: pule o translate e renderize com --original-captions"
+
+
+def live_language_hint(lang: str, original_captions: bool = False) -> str:
     """Fluxo de lives (clipar-gta-br): a skill manda --lang pt; vale só para streamer brasileiro.
-    A ai-stream-clipper não traduz: live gringa sai com legenda no idioma original."""
+    Live gringa: transcrição no idioma falado e legenda traduzida para pt-BR (passo 4b da ai-stream-clipper)."""
     lang = lang if lang in LANGS else AUTO_LANG
     if lang == "pt":
         return ""
     if lang == AUTO_LANG:
-        return (" (idioma não informado: o --lang pt da skill vale só se o título/canal deixar claro que a live é "
-                "brasileira; senão use --lang auto no prepare)")
-    return (f" (a live é falada em {lang_name(lang)}: use --lang {lang} no prepare em vez de --lang pt; "
-            f"a legenda fica em {lang_name(lang)}, hook, título e post em pt-BR)")
+        hint = (" (idioma não informado: o --lang pt da skill vale só se o título/canal deixar claro que a live é "
+                "brasileira; senão use --lang auto no prepare")
+    else:
+        hint = f" (a live é falada em {lang_name(lang)}: use --lang {lang} no prepare em vez de --lang pt"
+    if original_captions:
+        hint += ("; se não for em português" if lang == AUTO_LANG else "") + ORIGINAL_HINT
+    else:
+        hint += "; live gringa ganha legenda traduzida para pt-BR (passo 4b)"
+    return hint + ")"
 
 
 def language_hint(lang: str, original_captions: bool) -> str:
@@ -185,19 +193,21 @@ def language_hint(lang: str, original_captions: bool) -> str:
     else:
         hint = f" (o vídeo é falado em {lang_name(lang)}: use --lang {lang} no prepare"
     if original_captions and lang != "pt":
-        hint += "; se não for em português, mantenha a legenda no idioma original: pule o translate e renderize com --original-captions"
+        hint += ("; se não for em português" if lang == AUTO_LANG else "") + ORIGINAL_HINT
     return hint + ")"
 
 
 def build_command(claude: str, url: str, platform: str, clips: int, out_dir: Path | None,
                   lang: str = AUTO_LANG, original_captions: bool = False) -> tuple[list[str], str]:
-    """Mesmo prompt dos rodar_automatico.ps1 (+ dica de idioma no YouTube). Retorna (argv, prompt)."""
+    """Mesmo prompt dos rodar_automatico.ps1 (+ dica de idioma). Retorna (argv, prompt)."""
     clips = max(1, min(int(clips), MAX_CLIPS[platform]))
     if platform == YOUTUBE:
-        prompt = f"/cortes-youtube {url} --top {clips}" + language_hint(lang, original_captions)
+        # legenda em pt-BR (a skill traduz se o vídeo for gringo), a não ser que peça a legenda original
+        legenda = "" if original_captions and lang != "pt" else " --legenda pt"
+        prompt = f"/cortes-youtube {url} --top {clips}{legenda}" + language_hint(lang, original_captions)
         default_out, extra = DEFAULT_YT_OUT, []
     else:
-        prompt = f"/clipar-gta-br {url} (só {clips} cortes por live)" + live_language_hint(lang)
+        prompt = f"/clipar-gta-br {url} (só {clips} cortes por live)" + live_language_hint(lang, original_captions)
         default_out, extra = DEFAULT_TW_OUT, ["--add-dir", str(AI_STREAM_CLIPPER)]
     out = Path(out_dir) if out_dir else default_out
     if out.resolve() != default_out.resolve():

@@ -1,5 +1,6 @@
 {
- "_leia": "Canais do YouTube monitorados no modo automático. Troque o exemplo pelos canais de gameplay de GTA que você quer cortar (ex.: https://www.youtube.com/@NomeDoCanal) e mude 'ativo' para true. duracao_maxima_min 0 = sem limite; clipes_por_video vai até 10. Confira com: python -I cortes-youtube/novos_videos.py --verificar",
+ "_leia": "Canais do YouTube monitorados no modo automático. Troque o exemplo pelos canais de gameplay de GTA que você quer cortar (ex.: https://www.youtube.com/@NomeDoCanal) e mude 'ativo' para true. Confira com: python -I cortes-youtube/novos_videos.py --verificar. 'duracao_maxima_min': 0 = sem limite de duração. 'legenda': idioma da legenda no modo automático (pt ou en). 'clipes_por_video': até 10.",
+ "legenda": "pt",
  "max_videos_por_rodada": 2,
  "dias_para_tras": 7,
  "duracao_minima_min": 3,

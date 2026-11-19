@@ -1,12 +1,14 @@
 ﻿# Roda os cortes do YouTube sem interação (Windows).
 #   Automático (canais de canais.json):  .\cortes-youtube\rodar_automatico.ps1
-#   Vídeo(s) específico(s):              .\cortes-youtube\rodar_automatico.ps1 -Link URL [-Link URL2] [-Top 3]
+#   Vídeo(s) específico(s):              .\cortes-youtube\rodar_automatico.ps1 -Link URL [-Link URL2] [-Top 3] [-Legenda en]
 #     (vários de uma vez também:          -Link URL1,URL2)
+#   -Legenda pt|en: idioma da legenda (padrão pt; no automático, o "legenda" do canal em canais.json)
 # Agendar todo dia às 5h23:
 #   schtasks /Create /SC DAILY /ST 05:23 /TN "Cortes YouTube" /TR "powershell -ExecutionPolicy Bypass -File C:\caminho\Aprendizado\cortes-youtube\rodar_automatico.ps1"
 param(
     [string[]]$Link = @(),
-    [ValidateRange(1, 10)][int]$Top = 0
+    [ValidateRange(1, 10)][int]$Top = 0,
+    [ValidateSet("", "pt", "en")][string]$Legenda = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path $PSScriptRoot -Parent
@@ -14,6 +16,7 @@ $Repo = Split-Path $PSScriptRoot -Parent
 $Prompt = "/cortes-youtube"
 if ($Link.Count -gt 0) { $Prompt += " " + ($Link -join " ") }
 if ($Top -gt 0) { $Prompt += " --top $Top" }
+if ($Legenda) { $Prompt += " --legenda $Legenda" }
 
 $LogDir = Join-Path $env:USERPROFILE "CortesYouTube\logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null

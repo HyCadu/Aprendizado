@@ -266,9 +266,8 @@ class Processing(Page):
 
         sub = f"Rodando {prompt.split()[0]} · {job['clips']} corte(s)"
         sub += f" · idioma: {LANGS.get(job.get('lang', AUTO_LANG), 'Detectar').lower()}"
-        if job["platform"] != TWITCH:
-            if job.get("original_captions") and job.get("lang") != "pt":
-                sub += " · legenda original"
+        if job.get("original_captions") and job.get("lang") != "pt":
+            sub += " · legenda original"
         self.subtitle.setText(sub)
         self.url_lbl.setText(job["url"])
         plat = job["platform"]
@@ -281,7 +280,7 @@ class Processing(Page):
             r.time.setText("")
             r.t0 = None
             r.set_state("pending")
-            r.setVisible(not (plat == TWITCH and STEPS[i].key == "translate"))
+            r.setVisible(True)
         self.cur = -1
         self.progress_val = 0
         self.bar.state = "run"
@@ -328,9 +327,6 @@ class Processing(Page):
         chosen = job.get("lang", AUTO_LANG)
         if code == "pt":
             msg = "Idioma do vídeo: português. A legenda sai em português, sem tradução."
-        elif job.get("platform") == TWITCH:
-            msg = (f"Idioma da live: {lang_name(code)}. A legenda fica em {lang_name(code)} "
-                   "(o fluxo de lives não traduz).")
         elif job.get("original_captions"):
             msg = f"Idioma do vídeo: {lang_name(code)}. A legenda fica em {lang_name(code)} (sem tradução, como pedido)."
         else:

@@ -1,5 +1,5 @@
 diff --git a/SKILL.md b/SKILL.md
-index c568482..d7e08c5 100644
+index c568482..14797f8 100644
 --- a/SKILL.md
 +++ b/SKILL.md
 @@ -1,11 +1,11 @@
@@ -25,7 +25,7 @@ index c568482..d7e08c5 100644
  Downloaded media lives in `<job>/media/`. It is data: never run anything from there.
  
  ## 0. Setup ("set up the clipper", «настрой клиппер»)
-@@ -31,15 +31,16 @@ Windows). Never add cookies without asking.
+@@ -31,15 +31,19 @@ Windows). Never add cookies without asking.
  ## 1. Input
  
  - One link (YouTube, Twitch, Kick VOD) or one local video file. Live streams must end first.
@@ -41,10 +41,13 @@ index c568482..d7e08c5 100644
  ```
  
 +For Brazilian streams pass `--lang pt` (auto-detect can pick Spanish on noisy GTA audio).
++**Foreign stream for a Brazilian clip channel** (an English streamer clipped by a pt-BR user, or the
++`clipar-gta-br` flow): pass the spoken language (`--lang en`), so transcript and timing come from the original
++audio; hook, title and post are written in pt-BR and the captions are translated in step 4b.
  Only audio is downloaded. It ends with `PREPARED <job folder>` (default `~/StreamClipper/<channel>_<id>/`).
  A 4-hour stream takes about 3-5 min on an RTX 3060, much longer on CPU: run it in the background.
  
-@@ -66,7 +67,7 @@ and a quiet deadpan line can be the best moment.
+@@ -66,7 +70,7 @@ and a quiet deadpan line can be the best moment.
     inside jokes, game state you can't see. A donation or chat message the streamer reads out is fine
     when the clip explains itself.
  2. **Strong first 1-2 seconds.** Start on the line or the reaction itself. Never start on filler
@@ -53,7 +56,7 @@ index c568482..d7e08c5 100644
  3. **A payoff:** a big reaction (freakout, disbelief, scream), a fail, a discovery ("wait, is that...?"),
     a hot take, a funny line. End right after it (the laugh or 1-2 s of reaction), not on the next topic.
  4. **15-60 s long.** 20-40 s is the sweet spot.
-@@ -84,9 +85,12 @@ Good:
+@@ -84,9 +88,12 @@ Good:
  - "WAIT. WAIT. Is that... Vice City? NO WAY, they actually did it" + screaming: discovery + reaction, 9.
  - "People saying GTA 6 looks bad are lying to themselves, look at THIS": hot take with a payoff, 8.
  - «Да ну нахрен, это реально графика? Я думал, это рендер!»: реакция, 8.
@@ -66,7 +69,7 @@ index c568482..d7e08c5 100644
  
  Write **all** candidates and your top picks to `<job>/moments.json` with the Write tool:
  
-@@ -104,12 +108,20 @@ Write **all** candidates and your top picks to `<job>/moments.json` with the Wri
+@@ -104,12 +111,20 @@ Write **all** candidates and your top picks to `<job>/moments.json` with the Wri
  }
  ```
  
@@ -77,7 +80,8 @@ index c568482..d7e08c5 100644
 +and anything that needs knowing the server's story. Use the character name in `why` only if the clip says it.
 +
  `picks` = top N by score, not overlapping. **All texts in the stream's language** (`language` in
- `<job>/job.json`):
+-`<job>/job.json`):
++`<job>/job.json`), except a foreign stream for a pt-BR user: then all texts in pt-BR (see step 2):
  - `hook`: on-screen title for the first 2.8 s. 3-7 words, no emoji, says what's coming without spoiling it.
  - `title`: Shorts title, max ~90 chars, streamer name + the moment.
  - `caption`: 1-2 short sentences + an easy question for comments. Emoji allowed.
@@ -88,12 +92,37 @@ index c568482..d7e08c5 100644
  
  ## 4. Check
  
-@@ -127,14 +139,28 @@ transcript by audio, finds the facecam (also when the layout changes inside the
+@@ -119,6 +134,21 @@ Fix every ERROR. For each WARN either fix it or be sure it is fine, then run che
+ Read `<job>/moments.check.md`: the exact first and last words of each clip with times, and the words just
+ outside the cut. The first words must hook, the last words must be the payoff.
+ 
++## 4b. Translate the captions (foreign stream for a pt-BR user only)
++
++Skip this for a stream already in the user's language, or when the user wants the original captions
++(or render with `--original-captions`).
++1. `clipper.py translate <job>` splits each clip's speech into short phrases with exact times and writes
++   `<job>/translate.md` (to read) and `<job>/translation.todo.json` (template).
++2. Read `translate.md` and write `<job>/translation.json` with the Write tool, in the template's format:
++   per clip the same `key`, and `lines` with **exactly one translated line per phrase, same order**
++   (`""` for noise or a phrase that makes no sense).
++3. How: natural spoken pt-BR as a Brazilian clip channel would caption it ("Puta merda!", "Bora, porra!",
++   "Esse jogo é de outra geração"). Adapt slang and swearing, never word for word. Keep proper names. A line
++   is on screen only while the original phrase is spoken: a 1 s phrase needs a 2-4 word line. Swear masking
++   works on Portuguese too. Only the phrases of the picked clips are translated, never the whole stream.
++If you change a cut afterwards, run `check` and `translate` again: render refuses a stale translation.json.
++
+ ## 5. Render
+ 
+ `clipper.py render <job>` downloads only the needed minutes (up to 1440p), syncs them to the
+@@ -127,14 +157,31 @@ transcript by audio, finds the facecam (also when the layout changes inside the
  `NN_title.mp4`, `post.md` (Shorts / TikTok / Reels / X), `sheet.jpg` (12-frame contact sheet),
  `layout_debug.jpg` (green = facecam crop, red = detected cam overlay, blue = gameplay crop).
  `<job>/report.md`: stream length, candidates, kept, time per stage. `--only 2` re-renders one clip.
 -Swear words are masked in captions and the hook by default (F*CK, Х*Й); `--no-censor` turns that off.
 +Swear words are masked in captions and the hook by default (F*CK, Х*Й, P*RRA); `--no-censor` turns that off.
++With `translation.json` the log says `captions: translated to pt`: each translated line is on screen during
++the original phrase and its words light up spread over that span (not word-synced with the audio, since word
++order differs between languages). The sync check below still applies.
 +
 +**Speech x caption sync (mandatory).** For every clip the render measures the finished `.mp4`:
 +1. `speech`: where the clip's audio lands in the original audio (which the transcript timed). Tolerance 40 ms;
@@ -169,7 +198,7 @@ index 757e9a9..2d6d72c 100644
              continue
          ws.append({"s": max(0.0, s), "e": min(dur, e), "w": w["w"]})
 diff --git a/scripts/cl_common.py b/scripts/cl_common.py
-index 83911f0..2693b0d 100644
+index 83911f0..bb17e87 100644
 --- a/scripts/cl_common.py
 +++ b/scripts/cl_common.py
 @@ -100,7 +100,9 @@ _TR = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэю
@@ -182,19 +211,6 @@ index 83911f0..2693b0d 100644
      t = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
      return t[:maxlen].strip("-") or "clip"
  
-@@ -221,7 +223,11 @@ def ytdlp_base_opts(cookies_from_browser=None, cookies_file=None) -> dict:
-         opts["js_runtimes"] = rt
-     ff = which("ffmpeg")
-     if ff:
--        opts["ffmpeg_location"] = str(Path(ff).parent)
-+        ff_dir = str(Path(ff).parent)
-+        opts["ffmpeg_location"] = ff_dir
-+        # yt-dlp's partial-download check (download_ranges) looks for ffmpeg on PATH only
-+        if ff_dir not in os.environ.get("PATH", "").split(os.pathsep):
-+            os.environ["PATH"] = ff_dir + os.pathsep + os.environ.get("PATH", "")
-     cb = cookies_from_browser or cfg.get("cookies_from_browser")
-     if cb:
-         opts["cookiesfrombrowser"] = (cb,)
 diff --git a/scripts/cl_moments.py b/scripts/cl_moments.py
 index 02d879e..26f14f2 100644
 --- a/scripts/cl_moments.py
@@ -218,33 +234,25 @@ index 02d879e..26f14f2 100644
      picks = m.get("picks") or []
      if not picks:
 diff --git a/scripts/cl_render.py b/scripts/cl_render.py
-index 3903596..69e8274 100644
+index 3903596..210ddc5 100644
 --- a/scripts/cl_render.py
 +++ b/scripts/cl_render.py
-@@ -9,7 +9,7 @@ from pathlib import Path
+@@ -9,7 +9,8 @@ from pathlib import Path
  import numpy as np
  
  from cl_captions import build_ass
 -from cl_common import (FONTS, Timer, ffmpeg, fmt_dur, fmt_ts, lang_strings, load_config, log,
++from cl_translate import load as load_translation, translated_words
 +from cl_common import (FONTS, Timer, ffmpeg, ffprobe, fmt_dur, fmt_ts, lang_strings, load_config, log,
                         read_json, run, slug, video_stream, write_json, write_text)
  from cl_fetch import download_section
  from cl_layout import BOT_H, OUT_H, OUT_W, TOP_H, plan
-@@ -17,11 +17,42 @@ from cl_layout import BOT_H, OUT_H, OUT_W, TOP_H, plan
+@@ -17,11 +18,33 @@ from cl_layout import BOT_H, OUT_H, OUT_W, TOP_H, plan
  PAD = 4.0  # seconds of extra video downloaded around each clip
  
  
 +def _audio_start(path: Path) -> float:
-+    """start_time of the first audio stream on the container timeline (0 if unknown).
-+    The first packet's pts wins: yt-dlp AV1/Opus MKV sections can report stream start_time 0 while the
-+    audio really begins seconds later, which shifted the sync measurement by that gap."""
-+    try:
-+        r = subprocess.run([ffprobe(), "-v", "error", "-select_streams", "a:0", "-read_intervals", "%+#1",
-+                            "-show_entries", "packet=pts_time", "-of", "csv=p=0", str(path)],
-+                           capture_output=True, text=True)
-+        return float(r.stdout.strip().split()[0].rstrip(","))
-+    except Exception:
-+        pass
++    """start_time of the first audio stream on the container timeline (0 if unknown)."""
 +    try:
 +        r = subprocess.run([ffprobe(), "-v", "error", "-select_streams", "a:0", "-show_entries",
 +                            "stream=start_time", "-of", "csv=p=0", str(path)], capture_output=True, text=True)
@@ -275,7 +283,7 @@ index 3903596..69e8274 100644
  
  
  def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
-@@ -49,6 +80,55 @@ def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
+@@ -49,6 +72,55 @@ def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
      return t0, float(nc[lag])
  
  
@@ -331,21 +339,36 @@ index 3903596..69e8274 100644
  def encoder_args(cfg: dict):
      enc = cfg.get("encoder", "libx264")
      if enc == "h264_nvenc":
-@@ -166,7 +246,8 @@ def manual_layout(box: str, W: int, H: int) -> dict:
+@@ -166,7 +238,8 @@ def manual_layout(box: str, W: int, H: int) -> dict:
      return seg
  
  
 -def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=None, censor=True) -> dict:
 +def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=None, censor=True,
-+               caption_lead=0.0) -> dict:
++               caption_lead=0.0, original_captions=False) -> dict:
      t = Timer()
      meta = read_json(job / "job.json")
      meta.setdefault("timings", {})["render_started"] = time.time()
-@@ -248,34 +329,69 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+@@ -185,6 +258,12 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+     clips_dir = job / "clips"
+     results, todo = [], []
+     picks = sorted(chk["picks"], key=lambda q: q["order"])
++    # translated captions (translation.json written by Claude after `translate`), unless turned off
++    tr = {} if original_captions else load_translation(job, [p for p in picks if not only or p["order"] in only])
++    tr_lines = tr.get("lines", {}) if tr else {}
++    cap_lang = tr.get("to", lang) if tr_lines else lang
++    if tr_lines:
++        log(f"  captions: translated to {cap_lang} (translation.json)")
+     # pass 1: fetch the minutes we need, sync them, plan the layout
+     for p in picks:
+         k = p["order"]
+@@ -248,34 +327,72 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
              log(f"  clip {k}: layout {lay['mode']} (face in {int(lay['face_presence'] * 100)}% of frames)")
              ass = cdir / "captions.ass"
              wsel = [w for w in words if w["e"] > a and w["s"] < b]
 -            build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor)
++            if k in tr_lines:
++                wsel = translated_words(wsel, tr_lines[k])
 +            build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
 +                      lead=caption_lead)
              mp4 = cdir / f"{name}.mp4"
@@ -410,12 +433,15 @@ index 3903596..69e8274 100644
 +            sync["status"] = "FAIL" if "FAIL" in (sa["status"], sc_["status"]) else (
 +                "ok" if sa["status"] == "ok" and sc_["status"] == "ok" else "check")
              contact_sheet(mp4, cdir / "sheet.jpg", dur)
-             pt = post_texts(p, meta, lang)
+-            pt = post_texts(p, meta, lang)
++            pt = post_texts(p, meta, cap_lang if k in tr_lines else lang)   # crédito e tags no idioma da legenda
              write_json(cdir / "post.json", pt)
              write_text(cdir / "post.md", post_markdown(p, pt, name))
              secs = round(x["secs"] + ct(), 1)
-             write_json(cdir / "clip.json", {"pick": p, "layout": lay, "sync_confidence": round(conf, 3),
+-            write_json(cdir / "clip.json", {"pick": p, "layout": lay, "sync_confidence": round(conf, 3),
 -                                            "section_offset": round(off, 3), "seconds": secs})
++            write_json(cdir / "clip.json", {"pick": p, "layout": lay, "captions_lang": cap_lang if k in tr_lines else lang,
++                                            "sync_confidence": round(conf, 3),
 +                                            "section_offset": round(off, 3), "sync": sync, "seconds": secs})
              results.append({"order": k, "name": name, "mp4": str(mp4), "sheet": str(cdir / "sheet.jpg"),
                              "post": str(cdir / "post.md"), "start": a, "end": b, "duration": round(dur, 1),
@@ -425,7 +451,7 @@ index 3903596..69e8274 100644
              log(f"    done -> {mp4}")
          except Exception as e:
              log(f"    FAILED: {str(e)[:400]}")
-@@ -324,8 +440,14 @@ def write_report(job: Path):
+@@ -324,8 +441,14 @@ def write_report(job: Path):
               f"- Total: {fmt_dur(rep['total_seconds'] or 0)}", "", "## Clips"]
      for c in clips:
          if "mp4" in c:
@@ -441,32 +467,175 @@ index 3903596..69e8274 100644
          else:
              lines += [f"{c['order']}. FAILED: {c.get('error', '')[:200]}"]
      write_text(job / "report.md", "\n".join(lines) + "\n")
+diff --git a/scripts/cl_translate.py b/scripts/cl_translate.py
+new file mode 100644
+index 0000000..7cd4f08
+--- /dev/null
++++ b/scripts/cl_translate.py
+@@ -0,0 +1,134 @@
++"""Translated captions: an English video with pt-BR captions, or a Brazilian video with English captions.
++
++Flow:
++  1. `clipper.py translate JOB` splits the speech of every checked pick into short phrases with exact
++     times and writes `translate.md` (to read) + `translation.todo.json` (template).
++  2. Claude writes `translation.json`: one translated line per phrase, same order and count.
++  3. `render` sees translation.json and burns the translated captions: each phrase is on screen exactly
++     while the original phrase is spoken; its words light up spread over that time (by length).
++"""
++from __future__ import annotations
++
++import re
++from pathlib import Path
++
++from cl_common import fmt_ts, read_json, write_json, write_text
++
++END = (".", "!", "?", "…")
++GAP_SPLIT = 0.7      # silence that always starts a new phrase (s)
++MAX_WORDS = 14
++MAX_SECS = 5.0
++LANG_NAMES = {"pt": "português do Brasil (pt-BR)", "en": "inglês (English)", "es": "espanhol", "ru": "russo"}
++# Como traduzir, por idioma de destino (vai no topo do translate.md).
++STYLE = {
++    "pt": ("Tradução natural e curta, como legenda de canal de cortes brasileiro (\"Puta merda!\", \"Bora, "
++           "porra!\", \"Esse jogo é de outra geração\"): adapte gíria e palavrão, não traduza palavra por palavra."),
++    "en": ("Write natural spoken English, the way a US clip channel captions a stream (\"Bro, no way!\", "
++           "\"Let's go!\", \"This game is next gen\"): adapt Brazilian slang and swearing (mano = bro, porra = "
++           "damn / f*ck, caralho = holy sh*t, tá ligado = you know), never word for word."),
++}
++
++
++def clip_words(words, a, b):
++    return [w for w in words if w["e"] > a and w["s"] < b]
++
++
++def phrases(ws):
++    """Split the clip's words into short phrases: sentence end, long pause, or too long."""
++    out, cur = [], []
++    for w in ws:
++        if cur:
++            prev = cur[-1]
++            gap = w["s"] - prev["e"]
++            pw = prev["w"].rstrip()
++            span = w["e"] - cur[0]["s"]
++            if (pw.endswith(END) or gap > GAP_SPLIT or len(cur) >= MAX_WORDS or span > MAX_SECS
++                    or (pw.endswith(",") and len(cur) >= 6)):
++                out.append(cur)
++                cur = []
++        cur.append(w)
++    if cur:
++        out.append(cur)
++    return [{"s": round(p[0]["s"], 2), "e": round(p[-1]["e"], 2), "src": " ".join(x["w"].strip() for x in p)}
++            for p in out]
++
++
++def _key(p):
++    return f"{p['start']:.2f}-{p['end']:.2f}"
++
++
++def prepare(job: Path, to: str = "pt") -> dict:
++    meta = read_json(job / "job.json") or {}
++    chk = read_json(job / "moments.checked.json")
++    if not chk:
++        raise SystemExit("Run `check` first: moments.checked.json is missing")
++    words = read_json(job / "transcript" / "words.json", [])
++    src_lang = meta.get("language", "en")
++    todo = {"from": src_lang, "to": to, "clips": {}}
++    md = [f"# Tradução das legendas: {meta.get('title', '')}",
++          f"De {LANG_NAMES.get(src_lang, src_lang)} para {LANG_NAMES.get(to, to)}.", "",
++          "Escreva `translation.json` com o mesmo formato de `translation.todo.json`: em cada clipe, "
++          "`lines` tem exatamente uma linha traduzida por frase, na mesma ordem (pode ser \"\" para "
++          "barulho / frase sem sentido).", "",
++          STYLE.get(to, STYLE["pt"]) + " Mantenha nomes próprios. Cada linha só aparece enquanto a frase "
++          "original é falada: frase de 1 s pede 2-4 palavras.", ""]
++    for p in sorted(chk["picks"], key=lambda q: q["order"]):
++        ph = phrases(clip_words(words, p["start"], p["end"]))
++        todo["clips"][str(p["order"])] = {"key": _key(p), "src": [x["src"] for x in ph], "lines": []}
++        md += [f"## Clipe {p['order']}: {fmt_ts(p['start'])} - {fmt_ts(p['end'])} ({len(ph)} frases)", ""]
++        md += [f"{i}. [{x['s'] - p['start']:.1f}-{x['e'] - p['start']:.1f} s] {x['src']}" for i, x in enumerate(ph, 1)]
++        md.append("")
++    write_json(job / "translation.todo.json", todo)
++    write_text(job / "translate.md", "\n".join(md) + "\n")
++    return todo
++
++
++def load(job: Path, picks) -> dict:
++    """translation.json validated against the current checked picks -> {order: [lines]}.
++    Raises SystemExit if it is out of date (cuts changed after translating)."""
++    tr = read_json(job / "translation.json")
++    if not tr:
++        return {}
++    words = read_json(job / "transcript" / "words.json", [])
++    clips = tr.get("clips") or {}
++    out, errs = {}, []
++    for p in picks:
++        c = clips.get(str(p["order"]))
++        if c is None:
++            errs.append(f"clipe {p['order']}: não está em translation.json")
++            continue
++        n = len(phrases(clip_words(words, p["start"], p["end"])))
++        lines = c.get("lines") or []
++        if c.get("key") and c["key"] != _key(p):
++            errs.append(f"clipe {p['order']}: o corte mudou depois da tradução (rode translate de novo)")
++        elif len(lines) != n:
++            errs.append(f"clipe {p['order']}: {len(lines)} linhas traduzidas para {n} frases")
++        else:
++            out[p["order"]] = [str(x) for x in lines]
++    if errs:
++        raise SystemExit("translation.json inválido: " + "; ".join(errs))
++    return {"to": tr.get("to", "pt"), "lines": out}
++
++
++def translated_words(ws, lines):
++    """Synthetic word list in the target language with times: each phrase's translated words are
++    spread over the original phrase's span, weighted by length (longer words stay lit longer)."""
++    out = []
++    phs = phrases(ws)
++    for k, (ph, line) in enumerate(zip(phs, lines)):
++        toks = [t for t in re.split(r"\s+", line.strip()) if t]
++        if not toks:
++            continue
++        s, e = ph["s"], ph["e"]
++        span = max(e - s, 0.25 * len(toks))   # a short "Wow." translated to more words needs room
++        if k + 1 < len(phs):
++            span = min(span, max(e - s, phs[k + 1]["s"] - 0.05 - s))
++        span = max(span, 0.1)
++        weights = [len(re.sub(r"\W", "", t)) + 2 for t in toks]
++        tot = float(sum(weights))
++        t = s
++        for tok, wgt in zip(toks, weights):
++            d = span * wgt / tot
++            out.append({"s": round(t, 3), "e": round(t + d - 0.02, 3), "w": tok})
++            t += d
++    return out
 diff --git a/scripts/clipper.py b/scripts/clipper.py
-index 8474dfd..83457d1 100644
+index 8474dfd..2ae1262 100644
 --- a/scripts/clipper.py
 +++ b/scripts/clipper.py
-@@ -2,8 +2,8 @@
+@@ -2,9 +2,10 @@
  
  Commands (run with: python -I scripts/clipper.py <command> ...):
    setup   [--no-install] [--cpu] [--cookies-from-browser firefox]
 -  prepare SOURCE [--out DIR] [--lang auto|en|ru] [--top 3]
 -  check   JOB [--top 3]
+-  render  JOB [--only 1,3]
 +  prepare SOURCE [--out DIR] [--lang auto|en|ru|pt] [--top 10]
 +  check   JOB [--top 10]
-   render  JOB [--only 1,3]
++  translate JOB [--to pt]   (foreign stream: phrases for Claude to translate -> translation.json)
++  render  JOB [--only 1,3] [--original-captions]
    report  JOB
    sheet   VIDEO.mp4
-@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
+ SOURCE = YouTube / Twitch / Kick VOD link or a local video file.
+@@ -21,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
  from cl_common import (DEFAULT_OUT, Timer, fmt_dur, fmt_ts, log, read_json, slug, utf8_console,  # noqa: E402
                         write_json)
  
 -MAX_TOP = 3  # clips per stream in this version
-+DEFAULT_TOP = 3  # padrão quando ninguém pede um número
++DEFAULT_TOP = 3  # default when no number is asked for
 +MAX_TOP = 10  # clips per stream (GTA Clipper: up to 10)
  
  
  def job_dir_for(meta: dict, out: Path) -> Path:
-@@ -97,7 +98,7 @@ def cmd_check(args):
+@@ -97,7 +99,7 @@ def cmd_check(args):
      import cl_moments
      job = Path(args.job).expanduser().resolve()
      meta = read_json(job / "job.json") or {}
@@ -475,16 +644,46 @@ index 8474dfd..83457d1 100644
      for e in errors:
          log("ERROR: " + e)
      for w in warns:
-@@ -122,7 +123,7 @@ def cmd_render(args):
+@@ -115,6 +117,29 @@ def cmd_check(args):
+     return 0 if not errors else 2
+ 
+ 
++def cmd_translate(args):
++    import cl_translate
++    job = Path(args.job).expanduser().resolve()
++    meta = read_json(job / "job.json") or {}
++    if meta.get("language") == args.to:
++        old = job / "translation.json"
++        if old.exists():   # tradução de um pedido anterior (outro idioma): o render não pode usar
++            old.replace(job / "translation.old.json")
++            log("  translation.json antigo renomeado para translation.old.json")
++        log(f"O vídeo já está em '{args.to}': a legenda sai no idioma original, sem tradução.")
++        return 0
++    try:
++        todo = cl_translate.prepare(job, args.to)
++    except SystemExit as e:
++        log(f"  FAILED: {e}")
++        return 1
++    for k, c in todo["clips"].items():
++        log(f"  clipe {k}: {len(c['src'])} frases")
++    log(f"Leia {job / 'translate.md'} e escreva {job / 'translation.json'} "
++        f"(formato de translation.todo.json, 'lines' = uma linha traduzida por frase)")
++    return 0
++
++
+ def cmd_render(args):
+     import cl_render
+     only = [int(x) for x in args.only.split(",")] if args.only else None
+@@ -122,7 +147,7 @@ def cmd_render(args):
      log(f"== render: {job.name}")
      try:
          meta = cl_render.render_job(job, args.cookies_from_browser, args.cookies, only, args.facecam,
 -                                   not args.no_censor)
-+                                   not args.no_censor, args.caption_lead)
++                                   not args.no_censor, args.caption_lead, args.original_captions)
      except SystemExit as e:
          log(f"  FAILED: {e}")
          return 1
-@@ -168,8 +169,8 @@ def main():
+@@ -168,8 +193,8 @@ def main():
      p = sub.add_parser("prepare")
      p.add_argument("source", help="one stream link or local video file")
      p.add_argument("--out", default=str(DEFAULT_OUT))
@@ -495,25 +694,40 @@ index 8474dfd..83457d1 100644
                     help="clips per stream (1-3)")
      p.add_argument("--chunk-minutes", type=int, default=10)
      p.add_argument("--read-all", action="store_true", help="mark every chunk READ FIRST (thorough, more tokens)")
-@@ -178,7 +179,7 @@ def main():
+@@ -178,7 +203,11 @@ def main():
  
      p = sub.add_parser("check")
      p.add_argument("job")
 -    p.add_argument("--top", type=int, default=None, choices=range(1, MAX_TOP + 1), metavar="1-3")
 +    p.add_argument("--top", type=int, default=None, choices=range(1, MAX_TOP + 1), metavar="1-10")
++
++    p = sub.add_parser("translate")
++    p.add_argument("job")
++    p.add_argument("--to", default="pt", choices=["pt", "en"], help="caption language: pt (pt-BR) or en")
  
      p = sub.add_parser("render")
      p.add_argument("job")
-@@ -186,6 +187,9 @@ def main():
+@@ -186,6 +215,11 @@ def main():
      p.add_argument("--facecam", default=None,
                     help="manual webcam box x:y:w:h in source pixels (see layout_debug.jpg) if detection is wrong; full:X = one 9:16 crop centred on source x (IRL, wrong person)")
      p.add_argument("--no-censor", action="store_true", help="do not mask swear words in captions and hook")
++    p.add_argument("--original-captions", action="store_true",
++                   help="ignore translation.json and caption in the stream's own language")
 +    p.add_argument("--caption-lead", type=float, default=0.0,
 +                   help="shift captions in seconds: >0 earlier (they lag the voice), <0 later "
 +                        "(they run ahead), e.g. --caption-lead=-0.15")
      cookies(p)
  
      p = sub.add_parser("report")
+@@ -198,7 +232,7 @@ def main():
+     if args.cmd == "setup":
+         import cl_setup
+         return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
+-    return {"prepare": cmd_prepare, "check": cmd_check, "render": cmd_render,
++    return {"prepare": cmd_prepare, "check": cmd_check, "translate": cmd_translate, "render": cmd_render,
+             "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
+ 
+ 
 diff --git a/scripts/strings.json b/scripts/strings.json
 index e9699d3..e7de7b7 100644
 --- a/scripts/strings.json

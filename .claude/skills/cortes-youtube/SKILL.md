@@ -1,9 +1,9 @@
 ---
 name: cortes-youtube
-description: Cortes de vídeos do YouTube de gameplay de GTA editado (de qualquer duração). Transforma um vídeo (link do YouTube ou arquivo local) em até 10 clipes verticais 1080x1920 prontos para Shorts / TikTok / Reels / X - gameplay em 9:16 (ou facecam em cima, se houver), hook, legenda palavra por palavra e texto do post em pt-BR; vídeo em inglês (ou outro idioma) ganha legenda traduzida para pt-BR. Sem API key - o Claude escolhe os momentos pela transcrição. Clone adaptado do ai-stream-clipper (MIT). Use quando o usuário disser "corta esse vídeo", "faz cortes desse vídeo do YouTube", "cortes de gameplay", "/cortes-youtube", ou quando a tarefa agendada de cortes do YouTube rodar.
+description: Cortes de vídeos do YouTube de gameplay de GTA (qualquer duração). Transforma um vídeo (link do YouTube ou arquivo local) em até 10 clipes verticais 1080x1920 prontos para Shorts / TikTok / Reels / X - gameplay em 9:16 (ou facecam em cima, se houver), hook, legenda palavra por palavra e texto do post. Pergunta a cada vídeo se a legenda sai em português ou em inglês e traduz nos dois sentidos (vídeo gringo com legenda pt-BR, vídeo brasileiro com legenda em inglês). Sem API key - o Claude escolhe os momentos pela transcrição. Clone adaptado do ai-stream-clipper (MIT). Use quando o usuário disser "corta esse vídeo", "faz cortes desse vídeo do YouTube", "cortes de gameplay", "/cortes-youtube", ou quando a tarefa agendada de cortes do YouTube rodar. Para lives longas use a ai-stream-clipper / clipar-gta-br.
 ---
 
-# Cortes YouTube (gameplay de GTA editado, de qualquer duração)
+# Cortes YouTube (gameplay de GTA, qualquer duração)
 
 Um vídeo entra, até 10 clipes verticais saem. Os scripts baixam, transcrevem, medem sinais e renderizam
 localmente. **Você (Claude) escolhe os momentos** lendo a transcrição. Fale em português com o usuário.
@@ -30,14 +30,22 @@ Se aparecer "YouTube asks to sign in", pergunte se pode usar o login do navegado
 
 `REPO` = raiz deste repositório (onde está a pasta `cortes-youtube/`).
 
-- **Com link:** `/cortes-youtube <link> [<link2> ...] [--top N]`. Corte exatamente esses vídeos, mesmo fora de
-  `canais.json` ou já cortados antes. Primeiro rode
+- **Com link:** `/cortes-youtube <link> [<link2> ...] [--top N] [--legenda pt|en]`. Corte exatamente esses
+  vídeos, mesmo fora de `canais.json` ou já cortados antes. Primeiro rode
   `python -I REPO/cortes-youtube/novos_videos.py --link <link> [--link <link2>]`: devolve duração, título,
-  nº de clipes sugerido (`clipes`) e `avisos`. Com aviso de "ao vivo", pare e explique; vídeo longo (1 h, 2 h ou mais) é normal, siga.
-  `--top N` do usuário vale mais que o `clipes` sugerido.
+  nº de clipes sugerido (`clipes`) e `avisos`. Com aviso "ao vivo", pare e explique; aviso de vídeo longo é só
+  informação. `--top N` do usuário vale mais que o `clipes` sugerido.
 - **Sem link (automático / tarefa agendada):** `python -I REPO/cortes-youtube/novos_videos.py` devolve os
   vídeos novos dos canais. Lista vazia: diga "nenhum vídeo novo" e termine. Use o `clipes` de cada um
-  como `--top`.
+  como `--top` e o `legenda` de cada um como idioma da legenda.
+
+**Idioma da legenda (pergunte em todo corte).** Antes do `prepare`, pergunte ao usuário, com a ferramenta
+AskUserQuestion, uma pergunta só para todos os links do pedido: "Legenda em português ou em inglês?"
+(opções: Português (pt-BR), Inglês). Não pergunte quando: o pedido já diz (`--legenda pt|en`, "com legenda em
+inglês"...); é o modo automático (use o `legenda` do item, padrão `pt`); ou não há ninguém para responder
+(rodando por `claude -p`, `rodar_automatico`, GTA Clipper Studio, tarefa agendada: use `pt`).
+O idioma da legenda vale para **todos os textos do clipe**: legenda, hook, `title`, `caption` e hashtags.
+Se a legenda é no idioma falado no vídeo, nada é traduzido; se é no outro, o passo 4b traduz.
 
 Para cada vídeo, um de cada vez: passos 2 a 6 abaixo. Depois registre o resultado com
 `python -I REPO/cortes-youtube/novos_videos.py --marcar <link> --status ok` (ou `pulado` se nenhum
@@ -46,7 +54,8 @@ caminhos dos `.mp4` e `post.md`, nota de cada clipe. Nunca publique nada.
 
 ## 1. Entrada
 
-- Um link do YouTube (ou Twitch/Kick) ou um arquivo de vídeo local, de qualquer duração (não há limite).
+- Um link do YouTube (ou Twitch/Kick) ou um arquivo de vídeo local, de **qualquer duração**. Acima de 60 min o
+  `prepare` usa trechos de 10 min e marca ~40% como READ FIRST (leitura econômica); `--read-all` lê tudo.
 - Clipes por vídeo (`--top 1..10`, padrão 5), conforme a duração:
   menos de 10 min: 1-2 · 10-20 min: 2-3 · 20-40 min: 3-4 · 40-60 min: 4-5 · 1-2 h: 5-7 · mais de 2 h: 7-10.
   Nunca encha linguiça: 2 clipes ótimos valem mais que 5 médios.
@@ -54,15 +63,18 @@ caminhos dos `.mp4` e `post.md`, nota de cada clipe. Nunca publique nada.
 ## 2. Preparar: áudio, transcrição, sinais, trechos
 
 ```
-clipper.py prepare <link-ou-arquivo> --lang pt --top N [--out DIR]
+clipper.py prepare <link-ou-arquivo> --lang pt|en|auto --top N [--out DIR]
 ```
 
-`--lang pt` sempre para vídeo brasileiro (com música e efeitos, a detecção automática erra).
-**Vídeo estrangeiro** (inglês, espanhol...): use o idioma falado (`--lang en`); a transcrição e os tempos
-saem do áudio original, e a legenda em pt-BR vem do passo 4b. Hook, título e post continuam em pt-BR.
+`--lang` é o **idioma falado no vídeo** (não o da legenda): a transcrição e os tempos saem do áudio original.
+Decida pelo título, canal e descrição: canal/título brasileiro = `pt`; gringo = `en`; sem certeza = `auto`.
+Com `pt`/`en` forçado o prepare também detecta o idioma pelo áudio e imprime
+`whisper: language = pt (detectado: pt 92%)`. Se aparecer `WARN: o áudio parece ser <x>`, o palpite estava
+errado: rode o `prepare` de novo com `--lang <x>` (ele refaz a transcrição). Em vídeo brasileiro com música e
+efeitos o `auto` pode errar para espanhol, por isso prefira `--lang pt` quando o canal é brasileiro.
 Baixa só o áudio. Termina com `PREPARED <pasta do job>` (padrão `~/CortesYouTube/<canal>_<id>/`).
-Trechos de 5 min. Por padrão **todos** os trechos ficam marcados READ FIRST (ler tudo acha mais momentos).
-`--smart` volta ao modo econômico (~40%): use se o usuário pedir para gastar menos ou em vídeo de mais de 2 h.
+Até 60 min: trechos de 5 min, **todos** marcados READ FIRST. Mais longo: trechos de 10 min, ~40% READ FIRST.
+`--smart` força o modo econômico; `--read-all` força ler tudo.
 
 ## 3. Escolher os momentos (seu trabalho)
 
@@ -116,7 +128,9 @@ Escreva **todos** os candidatos e os escolhidos em `<job>/moments.json` com a fe
 }
 ```
 
-`picks` = os N melhores por nota, sem sobreposição. Textos em pt-BR natural de canal de cortes brasileiro:
+`picks` = os N melhores por nota, sem sobreposição. Textos **no idioma da legenda**: pt-BR natural de canal de
+cortes brasileiro, ou inglês natural de canal de clipes americano ("HE DID NOT EXPECT THAT", "Paulinho loses it
+in the police chase"), nunca tradução palavra por palavra:
 - `hook`: título na tela nos primeiros 2,8 s. 3-7 palavras, sem emoji, sem dar spoiler do desfecho.
 - `title`: título do Shorts, até ~90 caracteres, nome do canal/criador + o momento.
 - `caption`: 1-2 frases curtas + uma pergunta fácil para comentários. Emoji pode.
@@ -129,19 +143,22 @@ sobreposição, começo com enrolação, frase cortada no meio, tamanho do hook.
 WARN corrija ou tenha certeza de que está bom, e rode de novo. Leia `<job>/moments.check.md`: as primeiras
 palavras precisam prender, as últimas precisam ser o desfecho.
 
-## 4b. Traduzir a legenda (só vídeo estrangeiro)
+## 4b. Legenda no idioma escolhido
 
-Se `language` em `<job>/job.json` não é `pt`, a legenda sai em pt-BR por padrão (o usuário pode pedir a
-original: aí pule este passo ou renderize com `--original-captions`).
-1. `clipper.py translate <job>` divide a fala de cada clipe em frases curtas com tempo exato e escreve
-   `<job>/translate.md` (para ler) e `<job>/translation.todo.json` (modelo).
-2. Leia `translate.md` e escreva `<job>/translation.json` com a ferramenta Write, no formato do modelo:
-   por clipe, o mesmo `key` e `lines` com **exatamente uma linha por frase, na mesma ordem**
-   (`""` para barulho ou frase sem sentido).
-3. Como traduzir: pt-BR natural de canal de cortes, curto, falado ("Puta merda!", "Bora, porra!",
-   "Esse jogo é de outra geração"). Adapte gíria e palavrão, não traduza palavra por palavra. Mantenha nomes
-   próprios (Lucia, Brian, condados). Cada linha aparece só enquanto a frase original é falada: frase de
-   1 s pede tradução de 2-4 palavras. A censura de palavrão vale para o português também.
+Rode sempre `clipper.py translate <job> --to <pt|en>` (o idioma da legenda escolhido).
+- Legenda no idioma falado (vídeo `pt` com legenda `pt`, vídeo `en` com legenda `en`): ele só avisa que não
+  precisa traduzir (e tira do caminho um `translation.json` antigo). Vá para o render.
+- Legenda no outro idioma (`en` → `pt` ou `pt` → `en`): ele divide a fala de cada clipe em frases curtas com
+  tempo exato e escreve `<job>/translate.md` (para ler, já com o estilo de tradução do idioma de destino) e
+  `<job>/translation.todo.json` (modelo).
+  1. Leia `translate.md` e escreva `<job>/translation.json` com a ferramenta Write, no formato do modelo:
+     por clipe, o mesmo `key` e `lines` com **exatamente uma linha por frase, na mesma ordem**
+     (`""` para barulho ou frase sem sentido).
+  2. Como traduzir: língua falada de canal de cortes, curta. Para pt-BR: "Puta merda!", "Bora, porra!",
+     "Esse jogo é de outra geração". Para inglês: "Bro, no way!", "Let's go!", "This game is next gen"
+     (mano = bro, porra = damn, caralho = holy sh*t). Adapte gíria e palavrão, nunca palavra por palavra.
+     Mantenha nomes próprios (Lucia, Brian, condados). Cada linha aparece só enquanto a frase original é
+     falada: frase de 1 s pede 2-4 palavras. A censura de palavrão vale nos dois idiomas.
 Se mudar um corte depois, rode `check` e `translate` de novo: o render recusa `translation.json` velho.
 
 ## 5. Renderizar

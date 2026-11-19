@@ -94,7 +94,7 @@ class NewJob(Page):
         self.p_yt = PlatformCard("video", "YouTube", "Vídeo de gameplay, qualquer duração · até 10 cortes\n"
                                  "legenda traduzida para pt-BR · skill cortes-youtube", "#ff4e45")
         self.p_tw = PlatformCard("sync", "Twitch", "Live/VOD longa com facecam · até 10 cortes\n"
-                                 "legenda no idioma da live · skill clipar-gta-br", T.PURPLE)
+                                 "live gringa: legenda traduzida para pt-BR · skill clipar-gta-br", T.PURPLE)
         self.pgroup = QButtonGroup(self)
         self.pgroup.setExclusive(True)
         for b in (self.p_yt, self.p_tw):
@@ -209,23 +209,15 @@ class NewJob(Page):
 
     def _on_lang(self, *_):
         code = self.lang()
-        if self.platform() == TWITCH:
-            self.keep_orig.setVisible(False)
-            if code == AUTO_LANG:
-                txt = ("O Claude decide pelo título e pelo canal; se não for live brasileira, o Whisper detecta pelo "
-                       "áudio. Live gringa: escolha o idioma acima.")
-            elif code == "pt":
-                txt = "Live brasileira: transcrição e legenda em português."
-            else:
-                txt = (f"Transcrição e legenda em {lang_name(code)}: o fluxo de lives ainda não traduz a legenda. "
-                       "Hook, título e post saem em português.")
-            self.lang_hint.setText(txt)
-            return
-        if code == AUTO_LANG:
+        live = self.platform() == TWITCH
+        if code == AUTO_LANG and live:
+            txt = ("O Claude decide pelo título e pelo canal; se não for live brasileira, o Whisper detecta pelo "
+                   "áudio. Live gringa ganha legenda traduzida para português. Se souber o idioma, escolha acima.")
+        elif code == AUTO_LANG:
             txt = ("O Claude decide pelo título e pelo canal; na dúvida, o Whisper detecta pelo áudio. "
                    "Vídeo gringo ganha legenda traduzida para português. Se souber o idioma, escolha acima.")
         elif code == "pt":
-            txt = "Vídeo brasileiro: transcrição em português, sem tradução."
+            txt = f"{'Live brasileira' if live else 'Vídeo brasileiro'}: transcrição em português, sem tradução."
         elif self.keep_orig.isChecked():
             txt = (f"Transcrição e legenda em {lang_name(code)}, sem tradução. "
                    "Hook, título e post saem em português.")
@@ -233,7 +225,8 @@ class NewJob(Page):
             txt = (f"Transcrição em {lang_name(code)} (tempos exatos do áudio original) e legenda traduzida para "
                    "português (pt-BR). Hook, título e post saem em português.")
         if code == AUTO_LANG and self.keep_orig.isChecked():
-            txt = "O Claude decide o idioma; se o vídeo for gringo, a legenda fica no idioma original, sem tradução."
+            txt = (f"O Claude decide o idioma; se {'a live for gringa' if live else 'o vídeo for gringo'}, a legenda fica no "
+                   "idioma original, sem tradução.")
         self.lang_hint.setText(txt)
         self.keep_orig.setVisible(code != "pt")
 
@@ -299,8 +292,7 @@ class NewJob(Page):
         lang = self.lang()
         self.state.settings["last_lang"] = lang
         job["lang"] = lang
-        if self.platform() == YOUTUBE:
-            self.state.settings["keep_original_captions"] = self.keep_orig.isChecked()
-            job["original_captions"] = self.keep_orig.isChecked() and lang != "pt"
+        self.state.settings["keep_original_captions"] = self.keep_orig.isChecked()
+        job["original_captions"] = self.keep_orig.isChecked() and lang != "pt"
         self.state.settings.save()
         self.state.job_started.emit(job)

@@ -94,7 +94,7 @@ def item(nome: str, e: dict, maximo: int) -> dict:
 def pendentes(cfg: dict, estado: dict, buscar=listar_videos) -> list:
     limite_ts = time.time() - float(cfg.get("dias_para_tras", 7)) * 86400
     dmin = float(cfg.get("duracao_minima_min", 3)) * 60
-    dmax = float(cfg.get("duracao_maxima_min") or 0) * 60  # 0 / ausente = sem limite
+    dmax = float(cfg.get("duracao_maxima_min") or 0) * 60 or float("inf")   # 0 / vazio = sem limite
     palavras = cfg.get("palavras_gta", ["gta"])
     maximo = int(cfg.get("clipes_por_video", 5))
     achados = []
@@ -111,14 +111,14 @@ def pendentes(cfg: dict, estado: dict, buscar=listar_videos) -> list:
             if not link or link in estado or e.get("live_status") in ("is_live", "is_upcoming"):
                 continue
             dur = float(e.get("duration") or 0)
-            if dur and (dur < dmin or (dmax and dur > dmax)):
+            if dur and not (dmin <= dur <= dmax):
                 continue
             ts = e.get("timestamp") or e.get("release_timestamp")
             if ts and float(ts) < limite_ts:
                 continue
             if c.get("so_gta") and not eh_gta(e.get("title", ""), palavras):
                 continue
-            achados.append(item(c["nome"], e, maximo))
+            achados.append(dict(item(c["nome"], e, maximo), legenda=c.get("legenda") or cfg.get("legenda", "pt")))
     achados.sort(key=lambda x: -(x["timestamp"] or 0))
     return achados[: int(cfg.get("max_videos_por_rodada", 2))]
 
@@ -129,6 +129,8 @@ def conferir_link(url: str, cfg: dict, estado: dict, buscar=info_video) -> dict:
     r = item(e.get("channel") or e.get("uploader") or "?", e, int(cfg.get("clipes_por_video", 5)))
     avisos = []
     dur = float(e.get("duration") or 0)
+    if dur > 90 * 60:
+        avisos.append(f"vídeo longo ({round(dur / 60)} min): a transcrição demora mais e a leitura é econômica (~40%)")
     if e.get("live_status") in ("is_live", "is_upcoming"):
         avisos.append("ainda ao vivo / agendado: espere terminar")
     if r["url"] in estado or url in estado:

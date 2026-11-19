@@ -33,7 +33,7 @@ class LinkTests(unittest.TestCase):
 
     def test_command_matches_rodar_automatico(self):
         argv, prompt = core.build_command("claude", YT, core.YOUTUBE, 3, None)
-        self.assertTrue(prompt.startswith(f"/cortes-youtube {YT} --top 3 ("))
+        self.assertTrue(prompt.startswith(f"/cortes-youtube {YT} --top 3 --legenda pt ("))
         self.assertIn("--lang auto", prompt)
         self.assertEqual(argv[:3], ["claude", "-p", prompt])
         i = argv.index("--allowedTools")
@@ -49,15 +49,17 @@ class LinkTests(unittest.TestCase):
         _, prompt = core.build_command("claude", TW, core.TWITCH, 25, None)
         self.assertTrue(prompt.startswith(f"/clipar-gta-br {TW} (só 10 cortes por live)"))  # limitado a 10
         _, prompt = core.build_command("claude", YT, core.YOUTUBE, 25, None)
-        self.assertTrue(prompt.startswith(f"/cortes-youtube {YT} --top 10 ("))  # limitado a 10
+        self.assertTrue(prompt.startswith(f"/cortes-youtube {YT} --top 10 --legenda pt ("))  # limitado a 10
 
     def test_language(self):
         _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, "en")
         self.assertIn("--lang en", p)
+        self.assertIn("--legenda pt", p)  # a skill não pergunta: legenda em pt-BR
         self.assertNotIn("--original-captions", p)
         _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, "es", True)
         self.assertIn("--lang es", p)
         self.assertIn("--original-captions", p)
+        self.assertNotIn("--legenda pt", p)
         _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, "pt", True)
         self.assertIn("--lang pt", p)
         self.assertNotIn("--original-captions", p)  # português não tem o que manter
@@ -65,7 +67,10 @@ class LinkTests(unittest.TestCase):
         self.assertIn("--lang auto", p)  # código desconhecido não entra no prompt
         _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "en", True)
         self.assertIn("--lang en", p)  # live gringa: transcrição no idioma certo
-        self.assertNotIn("--original-captions", p)  # ai-stream-clipper não tem essa opção
+        self.assertIn("--original-captions", p)  # ai-stream-clipper também tem essa opção
+        _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "en")
+        self.assertIn("traduzida para pt-BR", p)
+        self.assertNotIn("--original-captions", p)
         _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "pt")
         self.assertEqual(p, f"/clipar-gta-br {TW} (só 2 cortes por live)")  # igual ao rodar_automatico.ps1
 

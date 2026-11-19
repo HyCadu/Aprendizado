@@ -1,4 +1,4 @@
-"""Translated captions (e.g. an English video with pt-BR captions).
+"""Translated captions: an English video with pt-BR captions, or a Brazilian video with English captions.
 
 Flow:
   1. `clipper.py translate JOB` splits the speech of every checked pick into short phrases with exact
@@ -18,7 +18,15 @@ END = (".", "!", "?", "…")
 GAP_SPLIT = 0.7      # silence that always starts a new phrase (s)
 MAX_WORDS = 14
 MAX_SECS = 5.0
-LANG_NAMES = {"pt": "português do Brasil (pt-BR)", "en": "English", "es": "español", "ru": "русский"}
+LANG_NAMES = {"pt": "português do Brasil (pt-BR)", "en": "inglês (English)", "es": "espanhol", "ru": "russo"}
+# Como traduzir, por idioma de destino (vai no topo do translate.md).
+STYLE = {
+    "pt": ("Tradução natural e curta, como legenda de canal de cortes brasileiro (\"Puta merda!\", \"Bora, "
+           "porra!\", \"Esse jogo é de outra geração\"): adapte gíria e palavrão, não traduza palavra por palavra."),
+    "en": ("Write natural spoken English, the way a US clip channel captions a stream (\"Bro, no way!\", "
+           "\"Let's go!\", \"This game is next gen\"): adapt Brazilian slang and swearing (mano = bro, porra = "
+           "damn / f*ck, caralho = holy sh*t, tá ligado = you know), never word for word."),
+}
 
 
 def clip_words(words, a, b):
@@ -61,8 +69,9 @@ def prepare(job: Path, to: str = "pt") -> dict:
           f"De {LANG_NAMES.get(src_lang, src_lang)} para {LANG_NAMES.get(to, to)}.", "",
           "Escreva `translation.json` com o mesmo formato de `translation.todo.json`: em cada clipe, "
           "`lines` tem exatamente uma linha traduzida por frase, na mesma ordem (pode ser \"\" para "
-          "barulho / frase sem sentido). Tradução natural e curta, como legenda de canal de cortes: "
-          "adapte gíria e palavrão, não traduza palavra por palavra. Mantenha nomes próprios.", ""]
+          "barulho / frase sem sentido).", "",
+          STYLE.get(to, STYLE["pt"]) + " Mantenha nomes próprios. Cada linha só aparece enquanto a frase "
+          "original é falada: frase de 1 s pede 2-4 palavras.", ""]
     for p in sorted(chk["picks"], key=lambda q: q["order"]):
         ph = phrases(clip_words(words, p["start"], p["end"]))
         todo["clips"][str(p["order"])] = {"key": _key(p), "src": [x["src"] for x in ph], "lines": []}
