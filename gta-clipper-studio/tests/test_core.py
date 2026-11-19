@@ -33,16 +33,48 @@ class LinkTests(unittest.TestCase):
 
     def test_command_matches_rodar_automatico(self):
         argv, prompt = core.build_command("claude", YT, core.YOUTUBE, 3, None)
-        self.assertEqual(prompt, f"/cortes-youtube {YT} --top 3")
+        self.assertTrue(prompt.startswith(f"/cortes-youtube {YT} --top 3 ("))
+        self.assertIn("--lang auto", prompt)
         self.assertEqual(argv[:3], ["claude", "-p", prompt])
         i = argv.index("--allowedTools")
         self.assertEqual(argv[i + 1:i + 6], core.ALLOWED_TOOLS)
         self.assertIn("--append-system-prompt", argv)
         self.assertTrue(all("python" in t for t in core.ALLOWED_TOOLS_EXTRA))
         self.assertNotIn("--dangerously-skip-permissions", argv)
+        j = argv.index("--disallowedTools")
+        self.assertEqual(argv[j + 1], "Monitor")  # monitor deixava o claude -p vivo depois do fim
         argv, prompt = core.build_command("claude", TW, core.TWITCH, 9, None)
-        self.assertEqual(prompt, f"/clipar-gta-br {TW} (só 3 cortes por live)")  # limitado a 3
+        self.assertTrue(prompt.startswith(f"/clipar-gta-br {TW} (só 9 cortes por live)"))
         self.assertIn(str(core.AI_STREAM_CLIPPER), argv)
+        _, prompt = core.build_command("claude", TW, core.TWITCH, 25, None)
+        self.assertTrue(prompt.startswith(f"/clipar-gta-br {TW} (só 10 cortes por live)"))  # limitado a 10
+        _, prompt = core.build_command("claude", YT, core.YOUTUBE, 25, None)
+        self.assertTrue(prompt.startswith(f"/cortes-youtube {YT} --top 10 ("))  # limitado a 10
+
+    def test_language(self):
+        _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, "en")
+        self.assertIn("--lang en", p)
+        self.assertNotIn("--original-captions", p)
+        _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, "es", True)
+        self.assertIn("--lang es", p)
+        self.assertIn("--original-captions", p)
+        _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, "pt", True)
+        self.assertIn("--lang pt", p)
+        self.assertNotIn("--original-captions", p)  # português não tem o que manter
+        _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None, 'x"; rm', False)
+        self.assertIn("--lang auto", p)  # código desconhecido não entra no prompt
+        _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "en", True)
+        self.assertIn("--lang en", p)  # live gringa: transcrição no idioma certo
+        self.assertNotIn("--original-captions", p)  # ai-stream-clipper não tem essa opção
+        _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "pt")
+        self.assertEqual(p, f"/clipar-gta-br {TW} (só 2 cortes por live)")  # igual ao rodar_automatico.ps1
+
+    def test_language_events(self):
+        evs = core.language_events("  whisper: language = en\nPREPARED C:\\job")
+        self.assertEqual(evs[0].data, {"lang": "en"})
+        evs = core.language_events("  captions: translated to pt (translation.json)")
+        self.assertEqual(evs[0].data, {"translated": "pt"})
+        self.assertEqual(core.language_events("nada aqui"), [])
 
     def test_custom_out(self):
         _, prompt = core.build_command("claude", YT, core.YOUTUBE, 2, Path("D:/Cortes"))
@@ -140,3 +172,32 @@ class LibraryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WhisperLockTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.dir = Path(tempfile.mkdtemp())
+        self.lock = self.dir / "whisper.lock"
+
+    def test_removes_dead_owner(self):
+        import subprocess, sys
+        p = subprocess.Popen([sys.executable, "-c", "pass"])
+        p.wait()  # PID que já morreu
+        self.lock.write_text(str(p.pid))
+        self.assertEqual(core.clear_stale_whisper_lock(self.lock), p.pid)
+        self.assertFalse(self.lock.exists())
+
+    def test_keeps_live_owner(self):
+        import os
+        self.lock.write_text(str(os.getpid()))
+        self.assertIsNone(core.clear_stale_whisper_lock(self.lock))
+        self.assertTrue(self.lock.exists())
+
+    def test_keeps_fresh_empty_lock(self):
+        self.lock.write_text("")
+        self.assertIsNone(core.clear_stale_whisper_lock(self.lock))
+        self.assertTrue(self.lock.exists())
+
+    def test_no_lock(self):
+        self.assertIsNone(core.clear_stale_whisper_lock(self.lock))

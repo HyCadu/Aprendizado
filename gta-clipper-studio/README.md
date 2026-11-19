@@ -35,7 +35,7 @@ Pelo terminal também funciona: `python gta-clipper-studio\main.py`.
 | Tela | O que faz |
 |---|---|
 | **Dashboard** | Total de cortes, vídeos processados, últimos 7 dias, status do sistema (Claude, skills, GPU, transcrição, FFmpeg), últimos processamentos e cortes recentes. |
-| **Novo corte** | Cole o link, escolha **YouTube** (até 5 cortes) ou **Twitch** (até 3) e clique em **INICIAR PROCESSAMENTO**. |
+| **Novo corte** | Cole o link, escolha **YouTube** ou **Twitch** (até 10 cortes em qualquer um) e clique em **INICIAR PROCESSAMENTO**. |
 | **Processamento** | Barra de progresso, etapas, logs em tempo real, tempo decorrido e botão **CANCELAR**. No fim, mostra a resposta do Claude com os caminhos dos clipes. |
 | **Biblioteca** | Todos os `.mp4` gerados, com miniatura, nota, duração e a sincronia da legenda. Busca, filtro, player embutido, texto do post (com botão de copiar) e botão para abrir a pasta. |
 | **Configurações** | Pastas de saída, caminho do Claude Code, verificação das dependências e informações da placa de vídeo (atualizadas a cada 4 s). |

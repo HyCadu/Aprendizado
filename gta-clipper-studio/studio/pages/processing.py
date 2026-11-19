@@ -10,11 +10,11 @@ from PySide6.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QMessageBox, QPla
                                QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import theme as T
-from ..core import STEP_INDEX, STEPS, TWITCH, Event, build_command
+from ..core import AUTO_LANG, LANGS, STEP_INDEX, STEPS, TWITCH, Event, build_command, lang_name
 from ..runner import JobRunner
 from ..storage import LOG_DIR, safe_log_name
 from ..system import find_claude, find_python
-from ..widgets import (Icon, NeonProgress, PulseDot, Spinner, badge, card, icon_button, label,
+from ..widgets import (AdaptiveBox, FlowLayout, Icon, NeonProgress, PulseDot, Spinner, badge, card, icon_button, label,
                        set_button_enabled)
 from .common import PLATFORM_LABEL, Page, open_file, open_folder
 
@@ -87,7 +87,7 @@ class Processing(Page):
     finished = Signal(str, dict)
 
     def __init__(self, state):
-        super().__init__("Processamento", "Nenhum processamento em andamento", scroll=False)
+        super().__init__("Processamento", "Nenhum processamento em andamento")
         self.state = state
         self.runner: JobRunner | None = None
         self.job: dict | None = None
@@ -109,8 +109,9 @@ class Processing(Page):
         ic.setFixedSize(80, 80)
         ev.addWidget(ic, 0, Qt.AlignHCenter)
         ev.addWidget(label("Nada rodando agora", "SectionTitle"), 0, Qt.AlignHCenter)
-        ev.addWidget(label("Comece um corte e acompanhe aqui cada etapa e os logs em tempo real.", "Muted"),
-                     0, Qt.AlignHCenter)
+        hint = label("Comece um corte e acompanhe aqui cada etapa e os logs em tempo real.", "Muted", wrap=True)
+        hint.setAlignment(Qt.AlignCenter)
+        ev.addWidget(hint)
         go = icon_button("NOVO CORTE", "add", "Primary")
         go.setFixedWidth(200)
         go.clicked.connect(lambda: state.navigate.emit("new"))
@@ -135,7 +136,7 @@ class Processing(Page):
         tt.setSpacing(0)
         self.status_lbl = label("Processando", "SectionTitle")
         self.status_lbl.setStyleSheet("font-size: 17px; font-weight: 800;")
-        self.step_lbl = label("", "Muted")
+        self.step_lbl = label("", "Muted", wrap=True)
         tt.addWidget(self.status_lbl)
         tt.addWidget(self.step_lbl)
         th.addLayout(tt, 1)
@@ -156,10 +157,11 @@ class Processing(Page):
         self.pct.setStyleSheet("font-weight: 800; font-size: 15px;")
         ph.addWidget(self.pct)
         tv.addLayout(ph)
-        btns = QHBoxLayout()
-        self.url_lbl = label("", "Dim")
+        self.url_lbl = label("", "Dim", wrap=True)
         self.url_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        btns.addWidget(self.url_lbl, 1)
+        tv.addWidget(self.url_lbl)
+        btns_w = QWidget()
+        btns = FlowLayout(btns_w, 8)
         self.b_folder = icon_button("Abrir pasta", "folder", "Ghost")
         self.b_folder.clicked.connect(self._open_out)
         self.b_lib = icon_button("Ver na biblioteca", "library", "Ghost")
@@ -170,13 +172,21 @@ class Processing(Page):
         self.b_cancel.clicked.connect(self._ask_cancel)
         for b in (self.b_folder, self.b_lib, self.b_new, self.b_cancel):
             btns.addWidget(b)
-        tv.addLayout(btns)
+        tv.addWidget(btns_w)
         rv.addWidget(top)
 
-        mid = QHBoxLayout()
-        mid.setSpacing(14)
+        mid_w = AdaptiveBox(900, 14)
+        mid = mid_w.box
         steps = card("CardFlat")
         steps.setFixedWidth(330)
+
+        def _stack(vertical: bool):  # janela estreita: etapas em cima, log embaixo
+            if vertical:
+                steps.setMinimumWidth(0)
+                steps.setMaximumWidth(16777215)
+            else:
+                steps.setFixedWidth(330)
+        mid_w.on_change = _stack
         sv = QVBoxLayout(steps)
         sv.setContentsMargins(18, 16, 18, 16)
         sv.addWidget(label("Etapas", "SectionTitle"))
@@ -215,10 +225,11 @@ class Processing(Page):
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(6000)
         self.log.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.log.setMinimumHeight(260)
         lv.addWidget(self.log, 1)
         lv.addWidget(self.result_box)
         mid.addWidget(logc, 1)
-        rv.addLayout(mid, 1)
+        rv.addWidget(mid_w, 1)
         self.stack.addWidget(run)
 
         self.timer = QTimer(self)
@@ -241,7 +252,8 @@ class Processing(Page):
             QMessageBox.warning(self, "Pasta de saída", f"Não consegui criar a pasta de saída:\n{out}\n\n{e}")
             return False
         try:
-            argv, prompt = build_command(claude, job["url"], job["platform"], job["clips"], out)
+            argv, prompt = build_command(claude, job["url"], job["platform"], job["clips"], out,
+                                         job.get("lang", AUTO_LANG), job.get("original_captions", False))
         except ValueError as e:
             QMessageBox.warning(self, "Pasta inválida", str(e))
             return False
@@ -252,7 +264,12 @@ class Processing(Page):
         self.runner.event.connect(self._on_event)
         self.runner.finished.connect(self._on_finished)
 
-        self.subtitle.setText(f"Rodando {prompt.split()[0]} · {job['clips']} corte(s)")
+        sub = f"Rodando {prompt.split()[0]} · {job['clips']} corte(s)"
+        sub += f" · idioma: {LANGS.get(job.get('lang', AUTO_LANG), 'Detectar').lower()}"
+        if job["platform"] != TWITCH:
+            if job.get("original_captions") and job.get("lang") != "pt":
+                sub += " · legenda original"
+        self.subtitle.setText(sub)
         self.url_lbl.setText(job["url"])
         plat = job["platform"]
         self.plat_badge.setText(PLATFORM_LABEL[plat].upper())
@@ -292,9 +309,36 @@ class Processing(Page):
             self._set_step(STEP_INDEX[ev.step])
         if ev.kind == "result":
             return  # mostrado no fim
+        if ev.kind == "lang":
+            self._on_language(ev.data)
+            return
         if ev.kind in ("output", "raw") and not self.verbose.isChecked():
             return
         self._append(ev)
+
+    def _on_language(self, data: dict):
+        job = self.job or {}
+        if data.get("translated"):
+            self._append(Event("info", f"Legenda traduzida para {lang_name(data['translated'])} (pt-BR) no render."))
+            return
+        code = data.get("lang", "")
+        if not code or code == job.get("detected_lang"):
+            return
+        job["detected_lang"] = code
+        chosen = job.get("lang", AUTO_LANG)
+        if code == "pt":
+            msg = "Idioma do vídeo: português. A legenda sai em português, sem tradução."
+        elif job.get("platform") == TWITCH:
+            msg = (f"Idioma da live: {lang_name(code)}. A legenda fica em {lang_name(code)} "
+                   "(o fluxo de lives não traduz).")
+        elif job.get("original_captions"):
+            msg = f"Idioma do vídeo: {lang_name(code)}. A legenda fica em {lang_name(code)} (sem tradução, como pedido)."
+        else:
+            msg = f"Idioma do vídeo: {lang_name(code)}. A legenda vai ser traduzida para português (pt-BR)."
+        self._append(Event("info", msg))
+        if chosen != AUTO_LANG and chosen != code:
+            self._append(Event("error", f"Atenção: você escolheu {lang_name(chosen)}, mas a transcrição saiu em "
+                                        f"{lang_name(code)}. Confira a legenda dos clipes."))
 
     def _append(self, ev: Event):
         col = LOG_COLORS.get(ev.kind, T.TEXT)

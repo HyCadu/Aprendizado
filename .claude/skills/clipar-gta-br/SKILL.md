@@ -1,6 +1,6 @@
 ---
 name: clipar-gta-br
-description: Fluxo automático de cortes de GTA em português. Acha as lives (VODs) novas de GTA dos streamers brasileiros listados em clipper-gta-br/streamers.json e transforma cada uma em até 3 clipes verticais com a skill ai-stream-clipper (facecam em cima, legendas, hook e texto de post em pt-BR). Use quando o usuário disser "clipar lives de GTA", "faz os cortes de hoje", "roda o fluxo de cortes", "/clipar-gta-br", ou quando a tarefa agendada rodar.
+description: Fluxo automático de cortes de GTA em português. Acha as lives (VODs) novas de GTA dos streamers brasileiros listados em clipper-gta-br/streamers.json e transforma cada uma em até 10 clipes verticais (3 por padrão) com a skill ai-stream-clipper (facecam em cima, legendas, hook e texto de post em pt-BR). Use quando o usuário disser "clipar lives de GTA", "faz os cortes de hoje", "roda o fluxo de cortes", "/clipar-gta-br", ou quando a tarefa agendada rodar.
 ---
 
 # Cortes automáticos de GTA (pt-BR)
@@ -19,7 +19,7 @@ Se `~/.ai-stream-clipper/config.json` não existir, rode `CLIPPER/scripts/clippe
 ## 2. Achar lives novas
 **Se o usuário passou um ou mais links** (ex.: `/clipar-gta-br https://www.twitch.tv/videos/123`), use só
 esses links, mesmo que não estejam em `streamers.json` ou já tenham sido processados, e pule para o passo 3.
-Se ele pediu um número de clipes ("só 1 corte"), use `--top N` (1 a 3).
+Se ele pediu um número de clipes ("só 1 corte"), use `--top N` (1 a 10).
 Sem links:
 ```
 python -I REPO/clipper-gta-br/novas_lives.py

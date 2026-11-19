@@ -28,14 +28,16 @@ class PlayerDialog(QDialog):
         super().__init__(parent)
         self.clip = clip
         self.setWindowTitle(f"{clip.title} — GTA CLIPPER STUDIO")
-        self.resize(1040, 760)
+        scr = self.screen().availableGeometry() if self.screen() else None
+        self.resize(min(1040, int(scr.width() * 0.92)) if scr else 1040,
+                    min(760, int(scr.height() * 0.9)) if scr else 760)
         h = QHBoxLayout(self)
         h.setContentsMargins(18, 18, 18, 18)
         h.setSpacing(18)
 
         left = QVBoxLayout()
         self.video = QVideoWidget()
-        self.video.setMinimumSize(380, 600)
+        self.video.setMinimumSize(240, 400)
         self.video.setStyleSheet("background: black; border-radius: 12px;")
         left.addWidget(self.video, 1)
         ctr = QHBoxLayout()

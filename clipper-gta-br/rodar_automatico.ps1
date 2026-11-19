@@ -5,7 +5,7 @@
 #   schtasks /Create /SC DAILY /ST 04:17 /TN "Cortes GTA" /TR "powershell -ExecutionPolicy Bypass -File C:\caminho\Aprendizado\clipper-gta-br\rodar_automatico.ps1"
 param(
     [string[]]$Link = @(),
-    [ValidateRange(1, 3)][int]$Top = 0
+    [ValidateRange(1, 10)][int]$Top = 0
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path $PSScriptRoot -Parent

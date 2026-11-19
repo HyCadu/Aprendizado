@@ -10,7 +10,7 @@ from .. import theme as T
 from ..core import DEFAULT_TW_OUT, DEFAULT_YT_OUT, REPO, TWITCH, YOUTUBE
 from ..storage import DATA_DIR, LOG_DIR
 from ..system import find_claude
-from ..widgets import Icon, NeonProgress, Spinner, badge, card, icon_button, label
+from ..widgets import AdaptiveBox, FlowLayout, Icon, NeonProgress, Spinner, badge, card, icon_button, label
 from .common import Page, open_folder
 
 
@@ -21,9 +21,11 @@ class FolderRow(QWidget):
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 4, 0, 4)
         v.setSpacing(6)
-        v.addWidget(label(title))
-        h = QHBoxLayout()
+        v.addWidget(label(title, wrap=True))
+        row = AdaptiveBox(520, 6)
+        h = row.box
         self.edit = QLineEdit(state.settings[key])
+        self.edit.setMinimumWidth(120)
         self.edit.setReadOnly(True)
         h.addWidget(self.edit, 1)
         b = icon_button("Escolher", "folder", "Ghost")
@@ -33,9 +35,15 @@ class FolderRow(QWidget):
         o.clicked.connect(lambda: open_folder(Path(self.edit.text())))
         r = icon_button("Padrão", "refresh", "Ghost", f"Voltar para {default}")
         r.clicked.connect(lambda: self._set(str(default)))
+        btns = QWidget()
+        bh = QHBoxLayout(btns)
+        bh.setContentsMargins(0, 0, 0, 0)
+        bh.setSpacing(6)
         for x in (b, o, r):
-            h.addWidget(x)
-        v.addLayout(h)
+            bh.addWidget(x)
+        bh.addStretch(1)
+        h.addWidget(btns)
+        v.addWidget(row)
 
     def _choose(self):
         d = QFileDialog.getExistingDirectory(self, "Escolher pasta de saída", self.edit.text())
@@ -63,13 +71,15 @@ class CheckRow(QFrame):
         h.addWidget(Icon("check" if c.ok else "error", 13, col))
         n = label(c.name)
         n.setStyleSheet("font-weight: 600;")
-        n.setFixedWidth(250)
-        h.addWidget(n)
-        d = label(c.detail, "Dim")
+        n.setMinimumWidth(110)
+        n.setMaximumWidth(250)
+        n.setWordWrap(True)
+        h.addWidget(n, 2)
+        d = label(c.detail, "Dim", wrap=True)
         d.setTextInteractionFlags(Qt.TextSelectableByMouse)
         d.setToolTip(c.detail)
         d.setMinimumWidth(10)
-        h.addWidget(d, 1)
+        h.addWidget(d, 3)
         h.addWidget(badge("OK" if c.ok else ("FALTA" if c.required else "OPCIONAL"), col))
 
 
@@ -102,8 +112,8 @@ class Settings(Page):
         v.addLayout(cl)
         self.body.addWidget(c)
 
-        row = QHBoxLayout()
-        row.setSpacing(14)
+        row_w = AdaptiveBox(820, 14)
+        row = row_w.box
         # dependências
         d = card("CardFlat")
         dv = QVBoxLayout(d)
@@ -128,7 +138,7 @@ class Settings(Page):
 
         # GPU
         g = card("CardFlat")
-        g.setMinimumWidth(320)
+        g.setMinimumWidth(260)
         gv = QVBoxLayout(g)
         gv.setContentsMargins(22, 18, 22, 18)
         gv.setSpacing(10)
@@ -136,7 +146,7 @@ class Settings(Page):
         gh.addWidget(Icon("gpu", 16, T.PINK))
         gh.addWidget(label("Placa de vídeo", "SectionTitle"), 1)
         gv.addLayout(gh)
-        self.g_name = label("…")
+        self.g_name = label("…", wrap=True)
         self.g_name.setStyleSheet("font-size: 17px; font-weight: 800;")
         gv.addWidget(self.g_name)
         self.g_grid = QGridLayout()
@@ -157,7 +167,7 @@ class Settings(Page):
         gv.addWidget(self.vram_lbl)
         gv.addStretch(1)
         row.addWidget(g, 2)
-        self.body.addLayout(row)
+        self.body.addWidget(row_w)
 
         # segurança / sobre
         s = card("CardFlat")
@@ -170,21 +180,23 @@ class Settings(Page):
                     "Nenhum arquivo é apagado. Cancelar encerra os processos e mantém o que já foi gerado.",
                     "Credenciais e tokens são mascarados nos logs (••••••). Cookies do navegador nunca são usados "
                     "sem você pedir ao Claude.",
-                    f"Logs e configurações do app: {DATA_DIR}"):
+                    "Logs e configurações do app: " + str(DATA_DIR).replace("\\", "\\\u200b")):
             r = QHBoxLayout()
             r.addWidget(Icon("shield", 12, T.PINK))
             r.addWidget(label(txt, "Muted", wrap=True), 1)
             sv.addLayout(r)
-        bb = QHBoxLayout()
+        bb_w = QWidget()
+        bb = FlowLayout(bb_w, 8)
         lo = icon_button("Pasta de logs", "folder", "Ghost")
         lo.clicked.connect(lambda: (LOG_DIR.mkdir(parents=True, exist_ok=True), open_folder(LOG_DIR)))
         rp = icon_button("Pasta do projeto", "folder", "Ghost")
         rp.clicked.connect(lambda: open_folder(REPO))
         bb.addWidget(lo)
         bb.addWidget(rp)
-        bb.addStretch(1)
-        bb.addWidget(label(f"GTA CLIPPER STUDIO v{__version__}", "Dim"))
-        sv.addLayout(bb)
+        ver = label(f"GTA CLIPPER STUDIO v{__version__}", "Dim")
+        ver.setMinimumHeight(38)
+        bb.addWidget(ver)
+        sv.addWidget(bb_w)
         self.body.addWidget(s)
         self.body.addStretch(1)
 

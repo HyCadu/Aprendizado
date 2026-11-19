@@ -1,8 +1,8 @@
-"""Cortes YouTube - clone do AI Stream Clipper para vídeos editados de gameplay de GTA (até 60 min).
+"""Cortes YouTube - clone do AI Stream Clipper para vídeos editados de gameplay de GTA (sem limite de duração).
 
 Commands (run with: python -I scripts/clipper.py <command> ...):
   setup   [--no-install] [--cpu] [--cookies-from-browser firefox]
-  prepare SOURCE [--out DIR] [--lang auto|en|ru|pt] [--top 5] [--smart] [--force-long]
+  prepare SOURCE [--out DIR] [--lang auto|en|ru|pt] [--top 10] [--smart]
   check   JOB [--top 3]
   translate JOB [--to pt]   (vídeo estrangeiro: frases para o Claude traduzir -> translation.json)
   render  JOB [--only 1,3] [--original-captions]
@@ -22,8 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cl_common import (DEFAULT_OUT, Timer, fmt_dur, fmt_ts, log, read_json, slug, utf8_console,  # noqa: E402
                        write_json)
 
-MAX_TOP = 5  # até 5 clipes por vídeo
-MAX_MIN = 62  # vídeos de até 60 min (+2 de folga)
+DEFAULT_TOP = 5  # padrão quando ninguém pede um número
+MAX_TOP = 10  # até 10 clipes por vídeo
 
 
 def job_dir_for(meta: dict, out: Path) -> Path:
@@ -42,9 +42,6 @@ def cmd_prepare_one(src, args) -> Path:
     started = time.time()
     log(f"== prepare: {src}")
     meta = cl_fetch.probe_source(src, args.cookies_from_browser, args.cookies)
-    if meta.get("duration") and meta["duration"] > MAX_MIN * 60 and not args.force_long:
-        raise SystemExit(f"O vídeo tem {fmt_dur(meta['duration'])}: esta skill é para vídeos de até 60 min. "
-                         "Para lives longas use a ai-stream-clipper (ou passe --force-long).")
     job = job_dir_for(meta, Path(args.out).expanduser().resolve())
     job.mkdir(parents=True, exist_ok=True)
     (job / "media").mkdir(exist_ok=True)
@@ -102,7 +99,7 @@ def cmd_check(args):
     import cl_moments
     job = Path(args.job).expanduser().resolve()
     meta = read_json(job / "job.json") or {}
-    errors, warns, res = cl_moments.check(job, min(MAX_TOP, args.top or meta.get("top_n", MAX_TOP)))
+    errors, warns, res = cl_moments.check(job, min(MAX_TOP, args.top or meta.get("top_n", DEFAULT_TOP)))
     for e in errors:
         log("ERROR: " + e)
     for w in warns:
@@ -193,18 +190,18 @@ def main():
     p.add_argument("source", help="one stream link or local video file")
     p.add_argument("--out", default=str(DEFAULT_OUT))
     p.add_argument("--lang", default="auto", help="auto, en, ru, pt (language of the stream)")
-    p.add_argument("--top", type=int, default=MAX_TOP, choices=range(1, MAX_TOP + 1), metavar="1-5",
-                   help="clipes por vídeo (1-5)")
+    p.add_argument("--top", type=int, default=DEFAULT_TOP, choices=range(1, MAX_TOP + 1), metavar="1-10",
+                   help="clipes por vídeo (1-10)")
     p.add_argument("--chunk-minutes", type=int, default=5)
     p.add_argument("--smart", action="store_true",
-                   help="ler só ~40%% dos trechos (padrão: ler o vídeo inteiro, barato em vídeos de até 60 min)")
-    p.add_argument("--force-long", action="store_true", help="aceitar vídeo com mais de 60 min")
+                   help="ler só ~40%% dos trechos (padrão: ler o vídeo inteiro, use em vídeos longos para gastar menos)")
+    p.add_argument("--force-long", action="store_true", help=argparse.SUPPRESS)  # antigo; não há mais limite
     p.add_argument("--cpu", action="store_true")
     cookies(p)
 
     p = sub.add_parser("check")
     p.add_argument("job")
-    p.add_argument("--top", type=int, default=None, choices=range(1, MAX_TOP + 1), metavar="1-5")
+    p.add_argument("--top", type=int, default=None, choices=range(1, MAX_TOP + 1), metavar="1-10")
 
     p = sub.add_parser("translate")
     p.add_argument("job")

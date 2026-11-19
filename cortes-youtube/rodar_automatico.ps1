@@ -6,7 +6,7 @@
 #   schtasks /Create /SC DAILY /ST 05:23 /TN "Cortes YouTube" /TR "powershell -ExecutionPolicy Bypass -File C:\caminho\Aprendizado\cortes-youtube\rodar_automatico.ps1"
 param(
     [string[]]$Link = @(),
-    [ValidateRange(1, 5)][int]$Top = 0
+    [ValidateRange(1, 10)][int]$Top = 0
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path $PSScriptRoot -Parent

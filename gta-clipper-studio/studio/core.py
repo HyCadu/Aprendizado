@@ -13,6 +13,7 @@ from pathlib import Path
 
 import os
 import sys
+import time
 
 
 def _find_repo() -> Path:
@@ -38,8 +39,58 @@ DEFAULT_TW_OUT = HOME / "StreamClipper"
 AI_STREAM_CLIPPER = HOME / ".claude" / "skills" / "ai-stream-clipper"
 CLIPPER_CONFIG = HOME / ".ai-stream-clipper" / "config.json"
 
+WHISPER_LOCK = HOME / ".ai-stream-clipper" / "whisper.lock"  # trava "uma transcrição por vez" das duas skills
+
+
+def pid_alive(pid: int) -> bool:
+    """O processo ainda existe? Só consulta, nunca mexe no processo."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ctypes.GetLastError() == 5  # acesso negado = existe, mas é de outro usuário
+        try:
+            code = ctypes.c_ulong()
+            if not k32.GetExitCodeProcess(h, ctypes.byref(code)):
+                return True
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            k32.CloseHandle(h)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def clear_stale_whisper_lock(lock: Path = WHISPER_LOCK) -> int | None:
+    """Apaga a trava da GPU deixada por uma transcrição que morreu (ex.: corte cancelado no meio, o que mata o
+    python à força e ele não solta a trava). Sem isso o próximo prepare fica "waiting for the GPU" por até 3 h.
+    Só apaga se o PID gravado nela não existe mais. Retorna o PID removido."""
+    try:
+        raw = lock.read_text(encoding="ascii", errors="ignore").strip()
+        age = time.time() - lock.stat().st_mtime
+    except OSError:
+        return None
+    pid = int(raw) if raw.isdigit() else 0
+    if pid == 0 and age < 60:
+        return None  # acabou de ser criada e o PID ainda está sendo gravado
+    if pid and pid_alive(pid):
+        return None
+    try:
+        lock.unlink()
+    except OSError:
+        return None
+    return pid
+
+
 YOUTUBE, TWITCH = "youtube", "twitch"
-MAX_CLIPS = {YOUTUBE: 5, TWITCH: 3}  # limites das próprias skills / rodar_automatico.ps1
+MAX_CLIPS = {YOUTUBE: 10, TWITCH: 10}  # limites das próprias skills (--top 1..10) / rodar_automatico.ps1
 
 # Exatamente as permissões dos rodar_automatico.ps1: python dos scripts e leitura/escrita de arquivos.
 # Nada de rede/publicação além do que os scripts da skill fazem.
@@ -53,7 +104,13 @@ APPEND_PROMPT = (
     "Python 3.12 no PATH já estão definidos, e a pasta atual já é a raiz do repositório. Rode todo script como um "
     "comando simples que começa com `python -I ...` (ferramenta Bash), sem prefixo de variáveis, sem `export`, "
     "sem `cd`, sem `&&`/`;`, sem caminho completo do python e sem `$env:`. Qualquer outro formato é bloqueado. "
+    "O app só marca o corte como concluído quando esta sessão termina: não deixe nada vigiando em segundo plano "
+    "(nada de Monitor, `tail -f` ou laço de espera). Para prepare e render, rode o comando e espere ele acabar "
+    "(em background, aguarde a notificação de fim). Depois da resposta final, não espere mais nada. "
     "Nunca publique nada.")
+# Monitor (tail -f no log) nunca termina sozinho: o claude -p ficava vivo depois dos clipes prontos e o app
+# continuava em "processando" até o monitor expirar.
+DISALLOWED_TOOLS = ["Monitor"]
 
 _YT_RE = re.compile(
     r"^https?://(?:www\.|m\.|music\.)?(?:youtube\.com/(?:watch\?v=|shorts/|live/)[\w-]{6,}[\w\-=&%.]*"
@@ -95,20 +152,59 @@ def _safe_dir(p: str | Path) -> str:
     return s
 
 
-def build_command(claude: str, url: str, platform: str, clips: int, out_dir: Path | None) -> tuple[list[str], str]:
-    """Mesmo prompt dos rodar_automatico.ps1. Retorna (argv, prompt)."""
+# Idioma falado no vídeo (só no modo YouTube; o fluxo de lives é sempre pt-BR).
+AUTO_LANG = "auto"
+LANGS = {AUTO_LANG: "Detectar", "pt": "Português", "en": "Inglês", "es": "Espanhol"}
+LANG_NAMES = {"pt": "português", "en": "inglês", "es": "espanhol", "ru": "russo", "fr": "francês",
+              "de": "alemão", "it": "italiano", "ja": "japonês", "ko": "coreano"}
+
+
+def lang_name(code: str) -> str:
+    return LANG_NAMES.get((code or "").lower(), code or "?")
+
+
+def live_language_hint(lang: str) -> str:
+    """Fluxo de lives (clipar-gta-br): a skill manda --lang pt; vale só para streamer brasileiro.
+    A ai-stream-clipper não traduz: live gringa sai com legenda no idioma original."""
+    lang = lang if lang in LANGS else AUTO_LANG
+    if lang == "pt":
+        return ""
+    if lang == AUTO_LANG:
+        return (" (idioma não informado: o --lang pt da skill vale só se o título/canal deixar claro que a live é "
+                "brasileira; senão use --lang auto no prepare)")
+    return (f" (a live é falada em {lang_name(lang)}: use --lang {lang} no prepare em vez de --lang pt; "
+            f"a legenda fica em {lang_name(lang)}, hook, título e post em pt-BR)")
+
+
+def language_hint(lang: str, original_captions: bool) -> str:
+    """Instrução extra do prompt sobre o idioma. Só códigos conhecidos entram no prompt."""
+    lang = lang if lang in LANGS else AUTO_LANG
+    if lang == AUTO_LANG:
+        hint = (" (idioma não informado: só use --lang pt no prepare se o título/canal deixar claro que o vídeo é "
+                "brasileiro; na dúvida use --lang auto e siga pelo language do job.json")
+    else:
+        hint = f" (o vídeo é falado em {lang_name(lang)}: use --lang {lang} no prepare"
+    if original_captions and lang != "pt":
+        hint += "; se não for em português, mantenha a legenda no idioma original: pule o translate e renderize com --original-captions"
+    return hint + ")"
+
+
+def build_command(claude: str, url: str, platform: str, clips: int, out_dir: Path | None,
+                  lang: str = AUTO_LANG, original_captions: bool = False) -> tuple[list[str], str]:
+    """Mesmo prompt dos rodar_automatico.ps1 (+ dica de idioma no YouTube). Retorna (argv, prompt)."""
     clips = max(1, min(int(clips), MAX_CLIPS[platform]))
     if platform == YOUTUBE:
-        prompt = f"/cortes-youtube {url} --top {clips}"
+        prompt = f"/cortes-youtube {url} --top {clips}" + language_hint(lang, original_captions)
         default_out, extra = DEFAULT_YT_OUT, []
     else:
-        prompt = f"/clipar-gta-br {url} (só {clips} cortes por live)"
+        prompt = f"/clipar-gta-br {url} (só {clips} cortes por live)" + live_language_hint(lang)
         default_out, extra = DEFAULT_TW_OUT, ["--add-dir", str(AI_STREAM_CLIPPER)]
     out = Path(out_dir) if out_dir else default_out
     if out.resolve() != default_out.resolve():
         prompt += f' (salve o job com --out "{_safe_dir(out)}" no prepare)'
     argv = [claude, "-p", prompt, "--output-format", "stream-json", "--verbose",
             "--allowedTools", *ALLOWED_TOOLS, *ALLOWED_TOOLS_EXTRA,
+            "--disallowedTools", *DISALLOWED_TOOLS,
             "--append-system-prompt", APPEND_PROMPT, "--add-dir", str(out), *extra]
     return argv, prompt
 
@@ -186,6 +282,22 @@ class Event:
 
 
 MP4_RE = re.compile(r"[A-Za-z]:[\\/][^\n\r*?\"<>|]*?\.mp4", re.I)
+# Linhas do clipper.py que dizem o idioma do vídeo: transcrição nova ou job já existente.
+LANG_RE = re.compile(r"whisper: language = ([a-z]{2,3})\b|\|\s*language ([a-z]{2,3})\s*\|", re.I)
+TRANSLATED_RE = re.compile(r"captions: translated to ([a-z]{2,3})\b", re.I)
+
+
+def language_events(text: str) -> list[Event]:
+    """Detecta na saída dos scripts o idioma do vídeo e se a legenda foi traduzida."""
+    evs = []
+    m = LANG_RE.search(text or "")
+    if m:
+        code = (m.group(1) or m.group(2)).lower()
+        evs.append(Event("lang", code, None, {"lang": code}))
+    m = TRANSLATED_RE.search(text or "")
+    if m:
+        evs.append(Event("lang", m.group(1).lower(), None, {"translated": m.group(1).lower()}))
+    return evs
 
 
 def _short(text: str, max_lines: int = 14, max_chars: int = 2400) -> str:
@@ -274,12 +386,16 @@ class StreamParser:
                     continue
                 kind = "error" if c.get("is_error") else "output"
                 evs.append(Event(kind, redact(_short(text)), None, {"tool": tool}))
+                if tool in ("Bash", "PowerShell") and not c.get("is_error"):
+                    evs.extend(language_events(text))
             return evs
         if t == "result":
             self.result = msg
             text = str(msg.get("result") or "")
             ok = not msg.get("is_error") and msg.get("subtype") == "success"
-            return [Event("result", redact(text), "finish",
+            # Sem etapa: com comando em background o Claude encerra o turno e continua no mesmo processo
+            # quando ele termina. O fim de verdade é o processo sair.
+            return [Event("result", redact(text), None,
                           {"ok": ok, "duration_ms": msg.get("duration_ms"),
                            "mp4": sorted(set(MP4_RE.findall(text)))})]
         return []

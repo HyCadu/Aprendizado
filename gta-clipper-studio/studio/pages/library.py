@@ -4,12 +4,12 @@ import time
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                               QVBoxLayout, QWidget)
+                               QSizePolicy, QVBoxLayout, QWidget)
 
 from .. import theme as T
 from ..core import TWITCH, YOUTUBE
 from ..storage import fmt_duration, fmt_size
-from ..widgets import Icon, badge, icon_button, label
+from ..widgets import FlowLayout, Icon, badge, icon_button, label
 from .common import PLATFORM_COLOR, PLATFORM_LABEL, Page, clip_thumb, open_file, open_folder, rounded
 
 CARD_W = 210
@@ -95,15 +95,17 @@ class Library(Page):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Buscar por título, canal ou arquivo…")
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(300)
+        self.search.setMinimumWidth(220)
+        self.search.setMaximumWidth(300)
         self.search.textChanged.connect(lambda: self._debounce.start(180))
-        self.head_right.addWidget(self.search)
+        self.head_right.addWidget(self.search, 1)
         r = icon_button("", "refresh", "Ghost", "Atualizar")
         r.setFixedWidth(42)
         r.clicked.connect(state.refresh_clips)
         self.head_right.addWidget(r)
 
-        bar = QHBoxLayout()
+        bar_w = QWidget()
+        bar = FlowLayout(bar_w, 8)
         self.fgroup = QButtonGroup(self)
         for i, (key, txt) in enumerate((("all", "Todos"), (YOUTUBE, "YouTube"), (TWITCH, "Lives (Twitch)"))):
             b = QPushButton(txt)
@@ -116,8 +118,8 @@ class Library(Page):
             self.fgroup.addButton(b, i)
             bar.addWidget(b)
         self.fgroup.idClicked.connect(lambda _i: self._render())
-        bar.addStretch(1)
         self.count = label("", "Muted")
+        self.count.setMinimumHeight(38)
         bar.addWidget(self.count)
         oy = icon_button("Pasta YouTube", "folder", "Ghost")
         oy.clicked.connect(lambda: open_folder(state.settings.out_dir(YOUTUBE)))
@@ -125,13 +127,15 @@ class Library(Page):
         ot.clicked.connect(lambda: open_folder(state.settings.out_dir(TWITCH)))
         bar.addWidget(oy)
         bar.addWidget(ot)
-        self.body.addLayout(bar)
+        self.body.addWidget(bar_w)
 
         self.grid_host = QWidget()
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(16)
         self.grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        # nº de colunas vem da largura (resizeEvent); a grade nunca força rolagem horizontal
+        self.grid_host.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.body.addWidget(self.grid_host)
         self.body.addStretch(1)
         self._cols = 0
@@ -145,7 +149,7 @@ class Library(Page):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        cols = max(1, (self.width() - 72 + 16) // (CARD_W + 16))
+        cols = max(1, (self.content_width() + 16) // (CARD_W + 16))
         if cols != self._cols:
             self._cols = cols
             self._debounce.start(60)
@@ -173,7 +177,7 @@ class Library(Page):
         if not clips:
             msg = ("Nenhum clipe encontrado com esse filtro." if total else
                    "Nenhum clipe ainda. Os vídeos gerados aparecem aqui automaticamente.")
-            e = label(msg, "Muted")
+            e = label(msg, "Muted", wrap=True)
             self.grid.addWidget(e, 0, 0)
             return
         cols = max(1, self._cols or 4)

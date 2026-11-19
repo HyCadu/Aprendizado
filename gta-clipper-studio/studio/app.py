@@ -5,7 +5,7 @@ import sys
 import time
 
 from PySide6.QtCore import QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QIcon, QLinearGradient, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QMainWindow, QMessageBox, QWidget
 
 from . import APP_NAME, __version__
@@ -54,8 +54,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
-        self.resize(1360, 860)
-        self.setMinimumSize(1100, 700)
+        # Cabe em telas pequenas (notebook 1366x768, 125-150% de escala): começa com até 90% da área livre.
+        self.setMinimumSize(560, 460)
+        scr = QGuiApplication.primaryScreen()
+        if scr is not None:
+            av = scr.availableGeometry()
+            self.resize(min(1360, int(av.width() * 0.9)), min(860, int(av.height() * 0.9)))
+        else:
+            self.resize(1360, 860)
         self.state = st = AppState()
 
         root = SunsetBackground()
@@ -142,6 +148,10 @@ class MainWindow(QMainWindow):
 
         self.state.clips_changed.connect(after_scan)
         self.state.refresh_clips()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.sidebar.set_compact(e.size().width() < 1000)
 
     def closeEvent(self, e):
         if self.processing.is_running():

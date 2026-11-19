@@ -1,11 +1,11 @@
 ---
 name: cortes-youtube
-description: Cortes de vídeos do YouTube de gameplay de GTA editado (até 60 min). Transforma um vídeo (link do YouTube ou arquivo local) em até 5 clipes verticais 1080x1920 prontos para Shorts / TikTok / Reels / X - gameplay em 9:16 (ou facecam em cima, se houver), hook, legenda palavra por palavra e texto do post em pt-BR; vídeo em inglês (ou outro idioma) ganha legenda traduzida para pt-BR. Sem API key - o Claude escolhe os momentos pela transcrição. Clone adaptado do ai-stream-clipper (MIT). Use quando o usuário disser "corta esse vídeo", "faz cortes desse vídeo do YouTube", "cortes de gameplay", "/cortes-youtube", ou quando a tarefa agendada de cortes do YouTube rodar. Para lives longas use a ai-stream-clipper / clipar-gta-br.
+description: Cortes de vídeos do YouTube de gameplay de GTA editado (de qualquer duração). Transforma um vídeo (link do YouTube ou arquivo local) em até 10 clipes verticais 1080x1920 prontos para Shorts / TikTok / Reels / X - gameplay em 9:16 (ou facecam em cima, se houver), hook, legenda palavra por palavra e texto do post em pt-BR; vídeo em inglês (ou outro idioma) ganha legenda traduzida para pt-BR. Sem API key - o Claude escolhe os momentos pela transcrição. Clone adaptado do ai-stream-clipper (MIT). Use quando o usuário disser "corta esse vídeo", "faz cortes desse vídeo do YouTube", "cortes de gameplay", "/cortes-youtube", ou quando a tarefa agendada de cortes do YouTube rodar.
 ---
 
-# Cortes YouTube (gameplay de GTA editado, até 60 min)
+# Cortes YouTube (gameplay de GTA editado, de qualquer duração)
 
-Um vídeo entra, até 5 clipes verticais saem. Os scripts baixam, transcrevem, medem sinais e renderizam
+Um vídeo entra, até 10 clipes verticais saem. Os scripts baixam, transcrevem, medem sinais e renderizam
 localmente. **Você (Claude) escolhe os momentos** lendo a transcrição. Fale em português com o usuário.
 
 `SKILL_DIR` = a pasta deste arquivo. Rode todo comando assim:
@@ -33,7 +33,7 @@ Se aparecer "YouTube asks to sign in", pergunte se pode usar o login do navegado
 - **Com link:** `/cortes-youtube <link> [<link2> ...] [--top N]`. Corte exatamente esses vídeos, mesmo fora de
   `canais.json` ou já cortados antes. Primeiro rode
   `python -I REPO/cortes-youtube/novos_videos.py --link <link> [--link <link2>]`: devolve duração, título,
-  nº de clipes sugerido (`clipes`) e `avisos`. Com aviso de mais de 60 min ou "ao vivo", pare e explique.
+  nº de clipes sugerido (`clipes`) e `avisos`. Com aviso de "ao vivo", pare e explique; vídeo longo (1 h, 2 h ou mais) é normal, siga.
   `--top N` do usuário vale mais que o `clipes` sugerido.
 - **Sem link (automático / tarefa agendada):** `python -I REPO/cortes-youtube/novos_videos.py` devolve os
   vídeos novos dos canais. Lista vazia: diga "nenhum vídeo novo" e termine. Use o `clipes` de cada um
@@ -46,10 +46,9 @@ caminhos dos `.mp4` e `post.md`, nota de cada clipe. Nunca publique nada.
 
 ## 1. Entrada
 
-- Um link do YouTube (ou Twitch/Kick) ou um arquivo de vídeo local, **de até 60 min**. Vídeo maior é recusado:
-  sugira a skill ai-stream-clipper (ou `--force-long` se o usuário insistir).
-- Clipes por vídeo (`--top 1..5`, padrão 5), conforme a duração:
-  menos de 10 min: 1-2 · 10-20 min: 2-3 · 20-40 min: 3-4 · 40-60 min: 4-5.
+- Um link do YouTube (ou Twitch/Kick) ou um arquivo de vídeo local, de qualquer duração (não há limite).
+- Clipes por vídeo (`--top 1..10`, padrão 5), conforme a duração:
+  menos de 10 min: 1-2 · 10-20 min: 2-3 · 20-40 min: 3-4 · 40-60 min: 4-5 · 1-2 h: 5-7 · mais de 2 h: 7-10.
   Nunca encha linguiça: 2 clipes ótimos valem mais que 5 médios.
 
 ## 2. Preparar: áudio, transcrição, sinais, trechos
@@ -62,8 +61,8 @@ clipper.py prepare <link-ou-arquivo> --lang pt --top N [--out DIR]
 **Vídeo estrangeiro** (inglês, espanhol...): use o idioma falado (`--lang en`); a transcrição e os tempos
 saem do áudio original, e a legenda em pt-BR vem do passo 4b. Hook, título e post continuam em pt-BR.
 Baixa só o áudio. Termina com `PREPARED <pasta do job>` (padrão `~/CortesYouTube/<canal>_<id>/`).
-Trechos de 5 min. Por padrão **todos** os trechos ficam marcados READ FIRST (vídeo curto = barato ler
-tudo). `--smart` volta ao modo econômico (~40%) se o usuário pedir para gastar menos.
+Trechos de 5 min. Por padrão **todos** os trechos ficam marcados READ FIRST (ler tudo acha mais momentos).
+`--smart` volta ao modo econômico (~40%): use se o usuário pedir para gastar menos ou em vídeo de mais de 2 h.
 
 ## 3. Escolher os momentos (seu trabalho)
 

@@ -3,12 +3,26 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from .. import theme as T
 from ..storage import fmt_duration, library_stats
-from ..widgets import Icon, PulseDot, StatCard, badge, card, glow, icon_button, label
+from ..widgets import AdaptiveBox, FlowLayout, Icon, PulseDot, ReflowGrid, StatCard, badge, card, glow, icon_button, label
 from .common import PLATFORM_COLOR, PLATFORM_LABEL, STATUS_COLOR, Page, clip_thumb, rounded
+
+
+class ElidedLabel(QLabel):
+    """Texto de uma linha que corta com "…" conforme a largura disponível."""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.full = text
+        self.setMinimumWidth(40)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.setText(self.fontMetrics().elidedText(self.full, Qt.ElideRight, max(20, self.width())))
 
 
 class StatusRow(QWidget):
@@ -22,7 +36,7 @@ class StatusRow(QWidget):
         v.setSpacing(0)
         self.name = label(name)
         self.name.setStyleSheet("font-weight: 600;")
-        self.detail = label("verificando…", "Dim")
+        self.detail = label("verificando…", "Dim", wrap=True)
         v.addWidget(self.name)
         v.addWidget(self.detail)
         h.addLayout(v, 1)
@@ -47,18 +61,17 @@ class Dashboard(Page):
         new_btn.clicked.connect(lambda: state.navigate.emit("new"))
         self.head_right.addWidget(new_btn)
 
-        grid = QGridLayout()
-        grid.setSpacing(14)
+        grid = ReflowGrid(190, (4, 2, 1), 14)
         self.s_clips = StatCard("video", "Cortes gerados", T.PINK)
         self.s_jobs = StatCard("cut", "Vídeos processados", T.PURPLE)
         self.s_week = StatCard("clock", "Nos últimos 7 dias", T.CYAN)
         self.s_time = StatCard("star", "Tempo total de cortes", T.ORANGE)
-        for i, w in enumerate((self.s_clips, self.s_jobs, self.s_week, self.s_time)):
-            grid.addWidget(w, 0, i)
-        self.body.addLayout(grid)
+        for w in (self.s_clips, self.s_jobs, self.s_week, self.s_time):
+            grid.add(w)
+        self.body.addWidget(grid)
 
-        row = QHBoxLayout()
-        row.setSpacing(14)
+        row_w = AdaptiveBox(860, 14)
+        row = row_w.box
         # status do sistema
         sys_card = card()
         sv = QVBoxLayout(sys_card)
@@ -93,7 +106,7 @@ class Dashboard(Page):
         rv.addLayout(self.recent)
         rv.addStretch(1)
         row.addWidget(rec, 6)
-        self.body.addLayout(row)
+        self.body.addWidget(row_w)
 
         # cortes recentes
         cl = card()
@@ -106,9 +119,9 @@ class Dashboard(Page):
         lib.clicked.connect(lambda: state.navigate.emit("library"))
         ch.addWidget(lib)
         cv.addLayout(ch)
-        self.thumbs = QHBoxLayout()
-        self.thumbs.setSpacing(14)
-        cv.addLayout(self.thumbs)
+        thumbs_w = QWidget()
+        self.thumbs = FlowLayout(thumbs_w, 14)
+        cv.addWidget(thumbs_w)
         self.body.addWidget(cl)
         self.body.addStretch(1)
 
@@ -134,10 +147,9 @@ class Dashboard(Page):
                 it.widget().deleteLater()
         clips = self.state.clips[:6]
         if not clips:
-            self.thumbs.addWidget(label("Nenhum corte ainda. Clique em NOVO CORTE para começar.", "Muted"))
+            self.thumbs.addWidget(label("Nenhum corte ainda. Clique em NOVO CORTE para começar.", "Muted", wrap=True))
         for c in clips:
             self.thumbs.addWidget(self._thumb(c))
-        self.thumbs.addStretch(1)
 
     def _thumb(self, c):
         w = QFrame()
@@ -181,18 +193,15 @@ class Dashboard(Page):
         v = QVBoxLayout()
         v.setSpacing(0)
         title = it.get("title") or it.get("url", "")
-        t = label(title)
+        t = ElidedLabel(title)
         t.setStyleSheet("background: transparent; font-weight: 600;")
-        t.setMaximumWidth(420)
         t.setToolTip(it.get("url", ""))
-        fm = t.fontMetrics()
-        t.setText(fm.elidedText(title, Qt.ElideRight, 400))
         sub = f"{PLATFORM_LABEL.get(plat, plat)} · {it.get('when', '')}"
         if it.get("clips") is not None:
             sub += f" · {it['clips']} corte(s)"
         if it.get("note"):
             sub += f" · {it['note']}"
-        s = label(sub, "Dim")
+        s = label(sub, "Dim", wrap=True)
         s.setStyleSheet("background: transparent;")
         v.addWidget(t)
         v.addWidget(s)

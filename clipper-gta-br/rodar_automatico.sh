@@ -14,7 +14,7 @@ while [ $# -gt 0 ]; do
     *) echo "opção desconhecida: $1 (use --link URL ou --top N)" >&2; exit 2 ;;
   esac
 done
-case "$TOP" in ""|[1-3]) ;; *) echo "--top deve ser de 1 a 3" >&2; exit 2 ;; esac
+case "$TOP" in ""|[1-9]|10) ;; *) echo "--top deve ser de 1 a 10" >&2; exit 2 ;; esac
 
 PROMPT="/clipar-gta-br"
 [ ${#LINKS[@]} -gt 0 ] && PROMPT="$PROMPT ${LINKS[*]}"

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 from .. import theme as T
 from ..core import TWITCH, YOUTUBE
 from ..storage import SHEET_CELL
-from ..widgets import label
+from ..widgets import AdaptiveBox, label
 
 PLATFORM_LABEL = {YOUTUBE: "YouTube", TWITCH: "Lives"}
 PLATFORM_COLOR = {YOUTUBE: "#ff4e45", TWITCH: T.PURPLE}
@@ -20,7 +20,10 @@ STATUS_COLOR = {"ok": T.GREEN, "erro": T.RED, "cancelado": T.AMBER, "pulado": T.
 
 
 class Page(QWidget):
-    """Página com título, subtítulo e área de rolagem."""
+    """Página com título, subtítulo e área de rolagem. Responsiva: margens menores e cabeçalho em duas
+    linhas quando a janela fica estreita."""
+
+    NARROW = 760  # abaixo disso (largura da página) as margens encolhem
 
     def __init__(self, title: str, subtitle: str, scroll: bool = True):
         super().__init__()
@@ -30,27 +33,46 @@ class Page(QWidget):
         body = QWidget()
         body.setObjectName("Page")
         self.body = QVBoxLayout(body)
+        self.margin = 36
         self.body.setContentsMargins(36, 30, 36, 30)
         self.body.setSpacing(18)
-        head = QHBoxLayout()
-        tv = QVBoxLayout()
+        head = AdaptiveBox(620, 10)
+        tw = QWidget()
+        tv = QVBoxLayout(tw)
+        tv.setContentsMargins(0, 0, 0, 0)
         tv.setSpacing(2)
         tv.addWidget(label(title, "PageTitle"))
-        self.subtitle = label(subtitle, "PageSub")
+        self.subtitle = label(subtitle, "PageSub", wrap=True)
         tv.addWidget(self.subtitle)
-        head.addLayout(tv, 1)
-        self.head_right = QHBoxLayout()
+        head.box.addWidget(tw, 1)
+        hr = QWidget()
+        self.head_right = QHBoxLayout(hr)
+        self.head_right.setContentsMargins(0, 0, 0, 0)
         self.head_right.setSpacing(8)
-        head.addLayout(self.head_right)
-        self.body.addLayout(head)
+        head.box.addWidget(hr, 0)
+        # janela estreita: título em cima e os botões do cabeçalho embaixo, alinhados à esquerda
+        head.on_change = lambda v: head.box.setAlignment(hr, Qt.AlignLeft if v else Qt.Alignment(0))
+        self.body.addWidget(head)
         if scroll:
             sa = QScrollArea()
             sa.setWidgetResizable(True)
             sa.setWidget(body)
             sa.setFrameShape(QScrollArea.NoFrame)
+            sa.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             outer.addWidget(sa)
         else:
             outer.addWidget(body)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        m = 36 if e.size().width() >= self.NARROW else 16
+        if m != self.margin:
+            self.margin = m
+            self.body.setContentsMargins(m, 30 if m == 36 else 18, m, 30 if m == 36 else 18)
+
+    def content_width(self) -> int:
+        """Largura útil dentro das margens (descontando a barra de rolagem)."""
+        return self.width() - 2 * self.margin - 12
 
     def on_show(self):
         pass

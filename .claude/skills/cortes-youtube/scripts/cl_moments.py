@@ -44,7 +44,7 @@ def starts_with_filler(ws, fillers) -> str:
     return ""
 
 
-def check(job: Path, top_n: int = 5, min_len: float = 15, max_len: float = 60):
+def check(job: Path, top_n: int = 10, min_len: float = 15, max_len: float = 60):
     meta = read_json(job / "job.json")
     lang = meta.get("language", "en")
     words = read_json(job / "transcript" / "words.json", [])
@@ -52,7 +52,7 @@ def check(job: Path, top_n: int = 5, min_len: float = 15, max_len: float = 60):
     errors, warns, out = [], [], []
     if not m:
         return ["moments.json not found or empty"], [], None
-    top_n = max(1, min(5, int(top_n or 5)))   # cortes-youtube: até 5 clipes por vídeo
+    top_n = max(1, min(10, int(top_n or 10)))   # cortes-youtube: até 10 clipes por vídeo
     cands = m.get("candidates") or []
     picks = m.get("picks") or []
     if not picks:

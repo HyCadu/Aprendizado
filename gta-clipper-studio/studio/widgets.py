@@ -3,15 +3,149 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import (Property, QEasingCurve, QPoint, QPropertyAnimation, QRectF, Qt, QTimer,
+from PySide6.QtCore import (Property, QEasingCurve, QPoint, QPropertyAnimation, QRect, QRectF, QSize, Qt, QTimer,
                             Signal)
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
-from PySide6.QtWidgets import (QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QHBoxLayout,
-                               QLabel, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QBoxLayout, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QGridLayout,
+                               QHBoxLayout, QLabel, QLayout, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout,
+                               QWidget)
 
 from . import theme as T
 
 _icon_family = None
+
+
+# ---------------------------------------------------------------- layouts responsivos
+class FlowLayout(QLayout):
+    """Itens lado a lado que quebram para a linha de baixo quando falta largura (barras de botões)."""
+
+    def __init__(self, parent=None, spacing: int = 8):
+        super().__init__(parent)
+        self._items = []
+        self._sp = spacing
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientations(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, w):
+        return self._do(QRect(0, 0, w, 0), True)
+
+    def setGeometry(self, r):
+        super().setGeometry(r)
+        self._do(r, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        s = QSize()
+        for it in self._items:
+            s = s.expandedTo(it.minimumSize())
+        m = self.contentsMargins()
+        return s + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _do(self, rect, test: bool) -> int:
+        m = self.contentsMargins()
+        r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y, line_h = r.x(), r.y(), 0
+        for it in self._items:
+            if it.widget() is not None and it.widget().isHidden():
+                continue
+            hint = it.sizeHint()
+            if x > r.x() and x + hint.width() > r.right() + 1:
+                x, y, line_h = r.x(), y + line_h + self._sp, 0
+            if not test:
+                it.setGeometry(QRect(QPoint(x, y), QSize(min(hint.width(), r.width()), hint.height())))
+            x += hint.width() + self._sp
+            line_h = max(line_h, hint.height())
+        return y + line_h - rect.y() + m.bottom()
+
+
+class ReflowGrid(QWidget):
+    """Itens do mesmo tamanho numa grade cujo nº de colunas acompanha a largura.
+    `cols` = opções de colunas, da maior para a menor (ex.: 4, 2, 1); usa a maior que couber
+    com cada item tendo pelo menos `min_w` px."""
+
+    def __init__(self, min_w: int, cols=(4, 2, 1), spacing: int = 14):
+        super().__init__()
+        self.min_w, self.opts = min_w, tuple(cols)
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setSpacing(spacing)
+        self.items: list[QWidget] = []
+        self._n = 0
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+
+    def add(self, w: QWidget):
+        self.items.append(w)
+        self._place(self._n or self.opts[-1], force=True)
+
+    def _fit(self, width: int) -> int:
+        sp = self.grid.spacing()
+        for n in self.opts:
+            if n * self.min_w + (n - 1) * sp <= width:
+                return n
+        return self.opts[-1]
+
+    def _place(self, n: int, force: bool = False):
+        if n == self._n and not force:
+            return
+        self._n = n
+        for w in self.items:
+            self.grid.removeWidget(w)
+        for c in range(max(self.opts) + 1):
+            self.grid.setColumnStretch(c, 1 if c < n else 0)
+        for i, w in enumerate(self.items):
+            self.grid.addWidget(w, i // n, i % n)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._place(self._fit(e.size().width()))
+
+    def minimumSizeHint(self):
+        return QSize(self.min_w, super().minimumSizeHint().height())
+
+
+class AdaptiveBox(QWidget):
+    """Linha (lado a lado) que vira coluna (um embaixo do outro) quando a largura fica abaixo de `breakpoint`."""
+
+    def __init__(self, breakpoint: int, spacing: int = 14):
+        super().__init__()
+        self.bp = breakpoint
+        self.box = QBoxLayout(QBoxLayout.LeftToRight, self)
+        self.box.setContentsMargins(0, 0, 0, 0)
+        self.box.setSpacing(spacing)
+        self.vertical = False
+        self.on_change = None  # callback(vertical: bool)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        v = e.size().width() < self.bp
+        if v != self.vertical:
+            self.vertical = v
+            self.box.setDirection(QBoxLayout.TopToBottom if v else QBoxLayout.LeftToRight)
+            if self.on_change:
+                self.on_change(v)
+
+    def minimumSizeHint(self):
+        return QSize(0, super().minimumSizeHint().height())
 
 
 def icon_family() -> str:
@@ -144,6 +278,8 @@ class NavButton(QPushButton):
         self.ic = QLabel(glyph(icon))
         self.ic.setFont(icon_font(17))
         self.lb = QLabel(text)
+        self.text = text
+        self.lay = lay
         for w in (self.ic, self.lb):
             w.setAttribute(Qt.WA_TransparentForMouseEvents)
         lay.addWidget(self.ic)
@@ -159,6 +295,12 @@ class NavButton(QPushButton):
         self.lb.setStyleSheet(f"background: transparent; font-size: 13px; font-weight: 600;"
                               f" color: {T.TEXT if on else T.MUTED};")
 
+    def set_compact(self, on: bool):
+        """Só o ícone (menu estreito); o nome vira dica ao passar o mouse."""
+        self.lb.setVisible(not on)
+        self.lay.setContentsMargins(*((14, 0, 4, 0) if on else (16, 0, 12, 0)))
+        self.setToolTip(self.text if on else "")
+
     def set_activity(self, on: bool):
         self.dot.setStyleSheet(f"background: {T.ACCENT}; border-radius: 4px;" if on else "background: transparent;")
 
@@ -170,22 +312,26 @@ class Sidebar(QFrame):
         super().__init__()
         self.setObjectName("Sidebar")
         self.setFixedWidth(232)
-        v = QVBoxLayout(self)
+        self.compact = False
+        self.v = v = QVBoxLayout(self)
         v.setContentsMargins(14, 22, 14, 18)
         v.setSpacing(4)
         brand = QHBoxLayout()
         brand.setSpacing(10)
         logo = Logo()
         brand.addWidget(logo)
-        txt = QVBoxLayout()
+        self.brand_txt = QWidget()
+        txt = QVBoxLayout(self.brand_txt)
+        txt.setContentsMargins(0, 0, 0, 0)
         txt.setSpacing(0)
         txt.addWidget(label("GTA CLIPPER", "Brand"))
         txt.addWidget(label("STUDIO", "BrandSub"))
-        brand.addLayout(txt)
+        brand.addWidget(self.brand_txt)
         brand.addStretch(1)
         v.addLayout(brand)
         v.addSpacing(26)
-        v.addWidget(label("MENU", "Dim"))
+        self.menu_lbl = label("MENU", "Dim")
+        v.addWidget(self.menu_lbl)
         v.addSpacing(6)
         self.buttons: list[NavButton] = []
         self.nav = QWidget()
@@ -214,6 +360,21 @@ class Sidebar(QFrame):
         self.nav_lay.addWidget(b)
         self.indicator.raise_()
         return b
+
+    def set_compact(self, on: bool):
+        """Janela estreita: menu só com ícones (72 px) para sobrar espaço para a página."""
+        if on == self.compact:
+            return
+        self.compact = on
+        self.setFixedWidth(72 if on else 232)
+        self.v.setContentsMargins(*((10, 22, 10, 18) if on else (14, 22, 14, 18)))
+        for w in (self.brand_txt, self.menu_lbl, self.footer):
+            w.setVisible(not on)
+        for b in self.buttons:
+            b.set_compact(on)
+        cur = next((i for i, b in enumerate(self.buttons) if b.isChecked()), None)
+        if cur is not None:
+            QTimer.singleShot(0, lambda: self._move(cur))
 
     def select(self, i: int, emit: bool = True):
         for j, b in enumerate(self.buttons):
@@ -482,6 +643,7 @@ class Toast(QFrame):
         lay.setContentsMargins(14, 10, 16, 10)
         self.ic = Icon("info", 15, T.GREEN)
         self.lb = QLabel()
+        self.lb.setWordWrap(True)
         self.lb.setStyleSheet("background: transparent; font-weight: 600;")
         lay.addWidget(self.ic)
         lay.addWidget(self.lb)
@@ -497,9 +659,11 @@ class Toast(QFrame):
         col = {"info": T.GREEN, "warn": T.AMBER, "error": T.RED}.get(kind, T.GREEN)
         self.ic.set({"info": "check", "warn": "warn", "error": "error"}.get(kind, "info"), col)
         self.lb.setText(text)
-        self.adjustSize()
         par = self.parentWidget()
-        self.move(par.width() - self.width() - 24, par.height() - self.height() - 24)
+        m = 24 if par.width() > 700 else 12
+        self.setMaximumWidth(max(220, min(520, par.width() - 2 * m)))
+        self.adjustSize()
+        self.move(par.width() - self.width() - m, par.height() - self.height() - m)
         self.show()
         self.raise_()
         self.anim.stop()

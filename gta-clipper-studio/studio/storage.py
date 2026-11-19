@@ -40,6 +40,8 @@ class Settings:
         "claude_path": "",
         "last_platform": YOUTUBE,
         "last_clips": 3,
+        "last_lang": "auto",
+        "keep_original_captions": False,
     }
 
     def __init__(self, path: Path = SETTINGS_FILE):

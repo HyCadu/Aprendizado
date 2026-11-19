@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from .core import REPO, Event, StreamParser, redact
+from .core import REPO, Event, StreamParser, clear_stale_whisper_lock, redact
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -46,6 +46,7 @@ class JobRunner(QObject):
         self._log = open(self.log_path, "w", encoding="utf-8")
         self._write_log(f"# {time.strftime('%Y-%m-%d %H:%M:%S')}  {redact(self.prompt)}\n")
         self.started_at = time.time()
+        self._clear_lock()
         try:
             self.proc = subprocess.Popen(
                 self.argv, cwd=str(REPO), env=env, stdin=subprocess.DEVNULL,
@@ -99,6 +100,8 @@ class JobRunner(QObject):
             for ev in self.parser.feed(line):
                 self._emit(ev)
         code = self.proc.wait()
+        if self.cancelled:
+            self._clear_lock()  # o python foi morto à força e não soltou a trava da GPU
         res = self.parser.result or {}
         data = {"returncode": code, "result": redact(str(res.get("result") or "")),
                 "duration_ms": res.get("duration_ms"), "elapsed": time.time() - self.started_at}
@@ -111,6 +114,11 @@ class JobRunner(QObject):
             if not res:
                 data["error"] = f"O Claude Code terminou sem resultado (código {code})."
         self._close(status, data)
+
+    def _clear_lock(self):
+        pid = clear_stale_whisper_lock()
+        if pid is not None:
+            self._emit(Event("info", f"Trava da GPU deixada por uma transcrição interrompida (PID {pid}) removida."))
 
     def _read_stderr(self):
         for raw in iter(self.proc.stderr.readline, b""):
