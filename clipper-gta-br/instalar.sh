@@ -21,7 +21,8 @@ cd "$DEST"
 if git apply --reverse --check "$PATCH" 2>/dev/null; then
   echo "Patch pt-BR já estava aplicado."
 else
-  git checkout -q "$COMMIT"
+  # Volta a skill para a versão original (desfaz um patch antigo, se houver) antes de aplicar o novo.
+  git reset -q --hard "$COMMIT"
   git apply "$PATCH"
   echo "Patch pt-BR aplicado."
 fi

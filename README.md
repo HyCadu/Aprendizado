@@ -108,16 +108,16 @@ Entre na pasta do canal e depois em **clips**. Em cada clipe:
 - **`.mp4`**: o vídeo pronto.
 - **`post.md`**: título, descrição e hashtags para cada rede. Abra com o Bloco de Notas, copie e cole.
 
-### Conferir a legenda (vídeos do YouTube)
+### Conferir a legenda
 
-Cada clipe é conferido sozinho: o programa mede se a fala e a legenda estão no tempo certo. O resultado
-fica no **`report.md`**, na pasta do vídeo:
+Cada clipe (de vídeo ou de live) é conferido sozinho: o programa mede se a fala e a legenda estão no tempo
+certo. O resultado fica no **`report.md`**, na pasta do vídeo, numa linha que começa com `sync`:
 
 | Aparece | Significa |
 |---|---|
 | `sync ok` | Fala e legenda no tempo certo. Pode usar. |
-| `unclear` | Não deu para medir (pouca fala ou música alta). Assista o clipe e confira. |
-| `FAIL` | Fora de sincronia. Não use. Peça ao Claude: `o clipe 2 deu FAIL na sincronia, refaz` |
+| `sync check` | Uma parte não deu para medir (pouca fala, música alta ou vídeo do seu computador). Se aparecer `captions ok`, a legenda está certa; senão, assista e confira. |
+| `sync FAIL` | Fora de sincronia. Não use. Peça ao Claude: `o clipe 2 deu FAIL na sincronia, refaz` |
 
 Se a legenda parecer adiantada ou atrasada mesmo com `sync ok`, peça ao Claude:
 `a legenda do clipe 2 está atrasada, ajusta` (ou `adiantada`).
@@ -164,7 +164,7 @@ Para cortar sem abrir o Claude, também dá para passar o link direto no script:
 | "This stream is still live" | A live ainda não acabou. Espere o vídeo aparecer no canal. |
 | Muito lento | Normal sem placa NVIDIA. Deixe rodando. |
 | O rosto saiu cortado | Diga ao Claude: `o rosto ficou errado no clipe 2, arruma`. |
-| Atualizar o projeto | Na pasta `Aprendizado`, digite `git pull`. |
+| Atualizar o projeto | Na pasta `Aprendizado`, digite `git pull` e depois rode de novo o instalador do passo 5 (atualiza a skill de lives). |
 | Qualquer outro erro | Copie a mensagem e cole para o Claude com: `deu esse erro, resolve`. |
 
 ---

@@ -25,7 +25,8 @@ try {
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Patch pt-BR já estava aplicado."
     } else {
-        git checkout -q $Commit
+        # Volta a skill para a versão original (desfaz um patch antigo, se houver) antes de aplicar o novo.
+        git reset -q --hard $Commit
         if ($LASTEXITCODE -ne 0) { Write-Host "ERRO: não achei a versão testada da skill."; exit 1 }
         git apply --whitespace=nowarn $Patch
         if ($LASTEXITCODE -ne 0) { Write-Host "ERRO: falha ao aplicar o patch pt-BR."; exit 1 }
