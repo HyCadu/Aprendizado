@@ -134,6 +134,17 @@ palavras precisam prender, as últimas precisam ser o desfecho.
 detecta facecam se houver, monta o 1080x1920, queima legendas e codifica H.264/AAC. Por clipe, em
 `<job>/clips/NN_titulo/`: `.mp4`, `post.md`, `sheet.jpg` (12 quadros), `layout_debug.jpg`.
 `--only 2` refaz um clipe. Palavrões saem mascarados (P*RRA); `--no-censor` desliga.
+**Sincronia fala x legenda (critério obrigatório).** Para cada clipe o render mede no `.mp4` pronto:
+1. `speech`: onde o áudio do clipe cai no áudio original (que a transcrição cronometrou). Tolerância 40 ms;
+   fora disso recodifica sozinho com o corte corrigido.
+2. `captions`: quando o destaque amarelo de cada palavra muda na tela, comparado ao instante em que a palavra
+   é falada. Tolerância 120 ms.
+Sai no log (`sync: speech ok (+0 ms), captions ok (+0 ms)`), em `clip.json` e em `report.md`.
+`FAIL` em qualquer um = clipe reprovado: não entregue, investigue (corte, timestamps do filtro) e renderize de novo.
+`unclear` (pouca fala, música alta, tela sem destaque visível) = confira você mesmo extraindo um quadro no
+instante de uma palavra (`words.json`) e vendo se a legenda destaca essa palavra.
+Ajuste fino manual, só se tudo der ok e ainda parecer fora: `--caption-lead` (positivo adianta, negativo
+atrasa; use `=` com negativo, ex. `--caption-lead=-0.1`).
 
 Layouts: sem rosto (o mais comum em gameplay editado) = `gameplay`, um recorte 9:16 seguindo a ação;
 com webcam no canto = `facecam`, rosto em cima e gameplay embaixo. Webcam errada: `--facecam x:y:w:h`
@@ -141,7 +152,8 @@ com webcam no canto = `facecam`, rosto em cima e gameplay embaixo. Webcam errada
 
 ## 6. Olhe antes de entregar
 
-Abra cada `sheet.jpg` com Read. Confira: a ação está dentro do recorte (carro / personagem não saiu do
+Primeiro confira a linha `sync` de cada clipe no `report.md`: só entregue clipe com `sync ok` (ou `check`
+já conferido à mão). Abra cada `sheet.jpg` com Read. Confira: a ação está dentro do recorte (carro / personagem não saiu do
 quadro), gameplay sem esticar, legenda legível acima do terço inferior, sem caractere quebrado, sem
 briga com legenda original. Depois passe ao usuário os caminhos dos `.mp4`, `post.md` e `report.md` e uma
 linha: só publique cortes de criadores que permitem, com crédito, e assista cada clipe antes de postar.

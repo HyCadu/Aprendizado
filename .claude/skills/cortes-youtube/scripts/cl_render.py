@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from cl_captions import build_ass
-from cl_common import (FONTS, Timer, ffmpeg, fmt_dur, fmt_ts, lang_strings, load_config, log,
+from cl_common import (FONTS, Timer, ffmpeg, ffprobe, fmt_dur, fmt_ts, lang_strings, load_config, log,
                        read_json, run, slug, video_stream, write_json, write_text)
 from cl_fetch import download_section
 from cl_layout import BOT_H, OUT_H, OUT_W, TOP_H, plan
@@ -17,11 +17,33 @@ from cl_layout import BOT_H, OUT_H, OUT_W, TOP_H, plan
 PAD = 4.0  # seconds of extra video downloaded around each clip
 
 
+def _audio_start(path: Path) -> float:
+    """start_time of the first audio stream on the container timeline (0 if unknown)."""
+    try:
+        r = subprocess.run([ffprobe(), "-v", "error", "-select_streams", "a:0", "-show_entries",
+                            "stream=start_time", "-of", "csv=p=0", str(path)], capture_output=True, text=True)
+        return float(r.stdout.strip().split()[0])
+    except Exception:
+        return 0.0
+
+
 def _pcm(path: Path, start: float, dur: float, sr: int = 8000) -> np.ndarray:
-    cmd = [ffmpeg(), "-v", "error", "-ss", f"{max(0, start):.3f}", "-t", f"{dur:.3f}", "-i", str(path),
+    """Audio of [start, start+dur] on the CONTAINER timeline, sample-exact.
+    Input-side -ss is not used: on yt-dlp sections the audio and video streams often start at different
+    times and the demuxer seeks by video keyframes, so -ss before -i can land seconds away from `start`."""
+    start = max(0.0, start)
+    sa = _audio_start(path)
+    cmd = [ffmpeg(), "-v", "error", "-i", str(path), "-t", f"{start + dur:.3f}",
            "-vn", "-ac", "1", "-ar", str(sr), "-f", "f32le", "pipe:1"]
     r = subprocess.run(cmd, capture_output=True)
-    return np.frombuffer(r.stdout, np.float32).copy()
+    x = np.frombuffer(r.stdout, np.float32).copy()
+    # sample 0 sits at container time sa: shift so that index 0 == container time `start`
+    shift = int(round((start - sa) * sr))
+    if shift >= 0:
+        x = x[shift:]
+    else:
+        x = np.concatenate([np.zeros(-shift, np.float32), x])
+    return x[: int(dur * sr)]
 
 
 def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
@@ -47,6 +69,55 @@ def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
     lag = int(np.argmax(nc))
     t0 = w0 + lag / sr - 1.0
     return t0, float(nc[lag])
+
+
+SYNC_AUDIO_TOL = 0.04     # s: clip audio vs transcript (auto-fixed by re-encoding)
+SYNC_CAPTION_TOL = 0.12   # s: on-screen word highlight vs its scheduled time (= the spoken word)
+
+
+def _ass_secs(ts: str) -> float:
+    h, m, s = ts.split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def caption_sync_check(mp4: Path, ass: Path, fps: int = 25) -> dict:
+    """Measure, on the FINISHED video, when the yellow word highlight actually changes, and compare
+    with when each caption event was scheduled (= the word's start in the transcript). Catches any
+    timestamp mix-up between the cut and the subtitle filter. Returns lag (s, + = captions late)."""
+    starts = []
+    for ln in ass.read_text(encoding="utf-8").splitlines():
+        if ln.startswith("Dialogue:") and ",Cap," in ln:
+            starts.append(_ass_secs(ln.split(",")[1]))
+    if len(starts) < 6:
+        return {"status": "skipped", "reason": "too few caption words"}
+    W, H = 270, 40   # caption band (y 1140-1300 of 1080x1920) at 1/4 scale
+    raw = subprocess.run([ffmpeg(), "-v", "error", "-i", str(mp4), "-vf",
+                          f"fps={fps},crop=1080:160:0:1140,scale={W}:{H}", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                          "pipe:1"], capture_output=True).stdout
+    n = len(raw) // (W * H * 3)
+    if n < fps * 3:
+        return {"status": "skipped", "reason": "could not read frames"}
+    f = np.frombuffer(raw[: n * W * H * 3], np.uint8).reshape(n, H, W, 3).astype(np.int16)
+    yellow = (f[..., 0] > 200) & (f[..., 1] > 170) & (f[..., 2] < 110)        # #FFE600 highlight
+    change = np.concatenate([[0], (yellow[1:] ^ yellow[:-1]).sum((1, 2))]).astype(np.float64)
+    change = np.maximum(0, change - np.median(change))
+    st = np.array(starts)
+
+    def score(lag):
+        idx = np.round((st + lag) * fps).astype(int)
+        idx = idx[(idx >= 1) & (idx < n - 1)]
+        return float(np.mean([change[i - 1:i + 2].max() for i in idx])) if len(idx) else 0.0
+
+    lags = np.arange(-3.0, 3.0001, 1.0 / fps)
+    sc = np.array([score(L) for L in lags])
+    best = int(np.argmax(sc))
+    base = float(np.median(sc)) + 1e-9
+    strength = float(sc[best] / base)
+    lag = float(lags[best])
+    if strength < 2.0:
+        return {"status": "unclear", "lag": round(lag, 3), "strength": round(strength, 2)}
+    ok = abs(lag) <= SYNC_CAPTION_TOL
+    return {"status": "ok" if ok else "FAIL", "lag": round(lag, 3), "strength": round(strength, 2)}
 
 
 def encoder_args(cfg: dict):
@@ -166,7 +237,8 @@ def manual_layout(box: str, W: int, H: int) -> dict:
     return seg
 
 
-def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=None, censor=True) -> dict:
+def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=None, censor=True,
+               caption_lead=0.0) -> dict:
     t = Timer()
     meta = read_json(job / "job.json")
     meta.setdefault("timings", {})["render_started"] = time.time()
@@ -248,34 +320,69 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             log(f"  clip {k}: layout {lay['mode']} (face in {int(lay['face_presence'] * 100)}% of frames)")
             ass = cdir / "captions.ass"
             wsel = [w for w in words if w["e"] > a and w["s"] < b]
-            build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor)
+            build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
+                      lead=caption_lead)
             mp4 = cdir / f"{name}.mp4"
             rel_ass = ass.relative_to(job).as_posix()
             fg = filter_graph(lay, rel_ass)
             fade_out = max(0.0, dur - 0.15)
             af = f"loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:d=0.06,afade=t=out:st={fade_out:.2f}:d=0.15"
-            base = [ffmpeg(), "-v", "error", "-y", "-ss", f"{off:.3f}", "-t", f"{dur:.3f}", "-i", str(section),
-                    "-filter_complex", fg, "-map", "[v]", "-map", "0:a:0", "-r", out_fps(section)]
-            tail = ["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-af", af, "-movflags", "+faststart",
-                    str(mp4)]
-            try:
-                run(base + encoder_args(cfg) + tail, cwd=str(job))
-            except RuntimeError:
-                if cfg.get("encoder", "libx264") != "libx264":
-                    log("    hardware encoder failed, retrying with libx264")
-                    run(base + encoder_args({"encoder": "libx264"}) + tail, cwd=str(job))
+            def encode(seek):
+                # Cut with trim/atrim on the container timeline (the one _pcm/align_section use) and reset
+                # both clocks to 0, so the captions (timed from 0) line up. -ss before -i seeks by video
+                # keyframe and lands seconds off on yt-dlp sections; -ss after -i keeps the source
+                # timestamps inside the filters, so the ass filter shows captions `seek` seconds late.
+                cut_v = f"[0:v]trim=start={seek:.3f}:duration={dur:.3f},setpts=PTS-STARTPTS[vin];"
+                cut_a = f"atrim=start={seek:.3f}:duration={dur:.3f},asetpts=PTS-STARTPTS,"
+                graph = cut_v + fg.replace("[0:v]", "[vin]", 1)
+                tail = ["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-af", cut_a + af, "-movflags", "+faststart",
+                        str(mp4)]
+                base = [ffmpeg(), "-v", "error", "-y", "-i", str(section), "-t", f"{dur:.3f}",
+                        "-filter_complex", graph, "-map", "[v]", "-map", "0:a:0", "-r", out_fps(section)]
+                try:
+                    run(base + encoder_args(cfg) + tail, cwd=str(job))
+                except RuntimeError:
+                    if cfg.get("encoder", "libx264") != "libx264":
+                        log("    hardware encoder failed, retrying with libx264")
+                        run(base + encoder_args({"encoder": "libx264"}) + tail, cwd=str(job))
+                    else:
+                        raise
+
+            encode(off)
+            # sync criterion, part 1: the clip's audio (the speech) must start where the transcript says
+            sync = {"audio": {"status": "skipped"}}
+            if meta["kind"] != "file" and conf >= 0.3:
+                t_out, c_out = align_section(job, mp4, a)
+                drift = t_out - a
+                if c_out >= 0.5 and abs(drift) > SYNC_AUDIO_TOL:
+                    log(f"    sync: speech was {drift * 1000:+.0f} ms off the captions, re-encoding")
+                    off = max(0.0, off - drift)
+                    encode(off)
+                    t_out, c_out = align_section(job, mp4, a)
+                    drift = t_out - a
+                if c_out >= 0.5:
+                    sync["audio"] = {"status": "ok" if abs(drift) <= SYNC_AUDIO_TOL else "FAIL",
+                                     "drift": round(drift, 3), "conf": round(c_out, 2)}
                 else:
-                    raise
+                    sync["audio"] = {"status": "unclear", "conf": round(c_out, 2)}
+            # part 2: each word must light up on screen at its scheduled (spoken) time
+            sync["captions"] = caption_sync_check(mp4, ass)
+            sa, sc_ = sync["audio"], sync["captions"]
+            log(f"    sync: speech {sa['status']}" + (f" ({sa['drift'] * 1000:+.0f} ms)" if "drift" in sa else "")
+                + f", captions {sc_['status']}" + (f" ({sc_['lag'] * 1000:+.0f} ms)" if "lag" in sc_ else ""))
+            sync["status"] = "FAIL" if "FAIL" in (sa["status"], sc_["status"]) else (
+                "ok" if sa["status"] == "ok" and sc_["status"] == "ok" else "check")
             contact_sheet(mp4, cdir / "sheet.jpg", dur)
             pt = post_texts(p, meta, lang)
             write_json(cdir / "post.json", pt)
             write_text(cdir / "post.md", post_markdown(p, pt, name))
             secs = round(x["secs"] + ct(), 1)
             write_json(cdir / "clip.json", {"pick": p, "layout": lay, "sync_confidence": round(conf, 3),
-                                            "section_offset": round(off, 3), "seconds": secs})
+                                            "section_offset": round(off, 3), "sync": sync, "seconds": secs})
             results.append({"order": k, "name": name, "mp4": str(mp4), "sheet": str(cdir / "sheet.jpg"),
                             "post": str(cdir / "post.md"), "start": a, "end": b, "duration": round(dur, 1),
-                            "score": p.get("score"), "hook": p.get("hook"), "layout": lay["mode"], "seconds": secs})
+                            "score": p.get("score"), "hook": p.get("hook"), "layout": lay["mode"], "seconds": secs,
+                            "sync": sync})
             log(f"    done -> {mp4}")
         except Exception as e:
             log(f"    FAILED: {str(e)[:400]}")
@@ -324,8 +431,14 @@ def write_report(job: Path):
              f"- Total: {fmt_dur(rep['total_seconds'] or 0)}", "", "## Clips"]
     for c in clips:
         if "mp4" in c:
+            sy = c.get("sync") or {}
+            sa, sc_ = sy.get("audio", {}), sy.get("captions", {})
+            sync_txt = (f"sync {sy.get('status', '?')}: speech {sa.get('status', '?')}"
+                        + (f" {sa['drift'] * 1000:+.0f} ms" if "drift" in sa else "")
+                        + f", captions {sc_.get('status', '?')}"
+                        + (f" {sc_['lag'] * 1000:+.0f} ms" if "lag" in sc_ else ""))
             lines += [f"{c['order']}. {c['hook']} ({fmt_ts(c['start'])}, {c['duration']} s, score {c['score']}, "
-                      f"{c['layout']})", f"   {c['mp4']}"]
+                      f"{c['layout']})", f"   {c['mp4']}", f"   {sync_txt}"]
         else:
             lines += [f"{c['order']}. FAILED: {c.get('error', '')[:200]}"]
     write_text(job / "report.md", "\n".join(lines) + "\n")

@@ -126,7 +126,7 @@ def cmd_render(args):
     log(f"== render: {job.name}")
     try:
         meta = cl_render.render_job(job, args.cookies_from_browser, args.cookies, only, args.facecam,
-                                   not args.no_censor)
+                                   not args.no_censor, args.caption_lead)
     except SystemExit as e:
         log(f"  FAILED: {e}")
         return 1
@@ -192,6 +192,9 @@ def main():
     p.add_argument("--facecam", default=None,
                    help="manual webcam box x:y:w:h in source pixels (see layout_debug.jpg) if detection is wrong; full:X = one 9:16 crop centred on source x (IRL, wrong person)")
     p.add_argument("--no-censor", action="store_true", help="do not mask swear words in captions and hook")
+    p.add_argument("--caption-lead", type=float, default=0.0,
+                   help="shift captions in seconds: >0 earlier (they lag the voice), <0 later "
+                        "(they run ahead), e.g. --caption-lead=-0.15")
     cookies(p)
 
     p = sub.add_parser("report")

@@ -191,7 +191,8 @@ def place_hook(hook: str, seg):
     return hl, HOOK_SIZES[-1], 720 - (2 * HOOK_SIZES[-1] + 44) / 2
 
 
-def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs: float = 2.6, censor_on=True):
+def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs: float = 2.6, censor_on=True,
+              lead: float = 0.0):
     global CENSOR
     CENSOR = censor_on
     mode = segments if isinstance(segments, str) else segments[0]["mode"]
@@ -199,7 +200,8 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
     dur = clip_end - clip_start
     ws = []
     for w in words:
-        s, e = w["s"] - clip_start, w["e"] - clip_start
+        # lead > 0 shows the word earlier (whisper word starts tend to lag over music / game audio)
+        s, e = w["s"] - clip_start - lead, w["e"] - clip_start - lead
         if e <= 0.02 or s >= dur - 0.02:
             continue
         ws.append({"s": max(0.0, s), "e": min(dur, e), "w": w["w"]})
