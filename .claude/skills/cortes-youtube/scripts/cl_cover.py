@@ -94,11 +94,14 @@ def pick_times(section: Path, off: float, dur: float, lay: dict, zooms=None, mp4
 
     def region_of(i, sg):
         if use_mp4:
-            # gameplay = painel de baixo (facecam) ou o quadro todo; sem hook (topo), sem legenda (y 1100-1320)
-            y_top = 740 if sg["mode"] == "facecam" else 420
+            # gameplay = painel de baixo (facecam) ou o quadro todo; sem o hook (topo) e sem a faixa da legenda
+            # (logo abaixo da cam no modo facecam, embaixo sem cam)
+            from cl_captions import caption_band
             fr = frames[i]
             ys = lambda v: int(v / H * sh)
-            return np.concatenate([fr[ys(y_top):ys(1100)], fr[ys(1320):ys(1880)]], axis=0)[:, 1:-1]
+            if sg["mode"] == "facecam":
+                return fr[ys(caption_band("facecam")[1] + 10):ys(1880), 1:-1]
+            return np.concatenate([fr[ys(420):ys(1100)], fr[ys(1320):ys(1880)]], axis=0)[:, 1:-1]
         x, y, w, h = sg["game"] if sg["mode"] == "facecam" else sg["full"]
         x0, y0 = int(x / W * sw), int(y / H * sh)
         x1, y1 = max(x0 + 4, int((x + w) / W * sw)), max(y0 + 4, int((y + h) / H * sh))

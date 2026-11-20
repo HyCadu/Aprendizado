@@ -82,7 +82,7 @@ def _ass_secs(ts: str) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def caption_sync_check(mp4: Path, ass: Path, fps: int = 25) -> dict:
+def caption_sync_check(mp4: Path, ass: Path, fps: int = 25, bands=None) -> dict:
     """Measure, on the FINISHED video, when the yellow word highlight actually changes, and compare
     with when each caption event was scheduled (= the word's start in the transcript). Catches any
     timestamp mix-up between the cut and the subtitle filter. Returns lag (s, + = captions late)."""
@@ -92,15 +92,25 @@ def caption_sync_check(mp4: Path, ass: Path, fps: int = 25) -> dict:
             starts.append(_ass_secs(ln.split(",")[1]))
     if len(starts) < 6:
         return {"status": "skipped", "reason": "too few caption words"}
-    W, H = 270, 40   # caption band (y 1140-1300 of 1080x1920) at 1/4 scale
+    # faixa da legenda em cada trecho (logo abaixo da cam no modo facecam, embaixo sem cam): lê de y0 do mais
+    # alto a y1 do mais baixo em 1/4 da escala e, em cada quadro, olha só a faixa daquele trecho
+    bands = bands or [(0.0, 1e9, 1140, 1300)]
+    ya, yb = min(b[2] for b in bands) // 4 * 4, -(-max(b[3] for b in bands) // 4) * 4
+    W, H = 270, (yb - ya) // 4
     raw = subprocess.run([ffmpeg(), "-v", "error", "-i", str(mp4), "-vf",
-                          f"fps={fps},crop=1080:160:0:1140,scale={W}:{H}", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                          f"fps={fps},crop=1080:{yb - ya}:0:{ya},scale={W}:{H}", "-f", "rawvideo", "-pix_fmt", "rgb24",
                           "pipe:1"], capture_output=True).stdout
     n = len(raw) // (W * H * 3)
     if n < fps * 3:
         return {"status": "skipped", "reason": "could not read frames"}
     f = np.frombuffer(raw[: n * W * H * 3], np.uint8).reshape(n, H, W, 3).astype(np.int16)
     yellow = (f[..., 0] > 200) & (f[..., 1] > 170) & (f[..., 2] < 110)        # #FFE600 highlight
+    mask = np.zeros((n, H, 1), bool)
+    for k in range(n):
+        tk = k / fps
+        b = next((b for b in bands if b[0] <= tk < b[1]), bands[-1])
+        mask[k, max(0, (b[2] - ya) // 4):max(0, (b[3] - ya) // 4)] = True
+    yellow &= mask
     change = np.concatenate([[0], (yellow[1:] ^ yellow[:-1]).sum((1, 2))]).astype(np.float64)
     change = np.maximum(0, change - np.median(change))
     st = np.array(starts)
@@ -414,6 +424,25 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
                 if off_prior:
                     log(f"    clip {x['k']}: cam differs from the other clips, re-checking")
                     x["lay"] = plan(x["section"], x["off"], x["dur"], x["cdir"] / "layout_debug.jpg", prior=best)
+            # a clip that came out with NO cam while the other clips of this video have it in the same place
+            # (calm streamer, small cam): look again for a live face right there
+            with_cam = sum(1 for x in todo if any(sg["mode"] == "facecam" and "face_center" in sg
+                                                  and abs(sg["face_center"][0] - best[0]) <= 0.08
+                                                  and abs(sg["face_center"][1] - best[1]) <= 0.12
+                                                  for sg in x["lay"]["segments"]))
+            if with_cam >= 2 and with_cam * 2 >= len(todo):
+                for x in todo:
+                    if any(sg["mode"] == "facecam" for sg in x["lay"]["segments"]):
+                        continue
+                    log(f"    clip {x['k']}: no cam found, but the other clips have it - re-checking at that spot")
+                    dbg = x["cdir"] / "layout_debug_retry.jpg"
+                    lay2 = plan(x["section"], x["off"], x["dur"], dbg, prior=best, trust_prior=True)
+                    if any(sg["mode"] == "facecam" for sg in lay2["segments"]):
+                        x["lay"] = lay2
+                        dbg.replace(x["cdir"] / "layout_debug.jpg")
+                        log(f"    clip {x['k']}: cam found ({lay2['mode']})")
+                    else:
+                        dbg.unlink(missing_ok=True)
     # pass 2: captions + encode
     for x in todo:
         p, k, name, cdir, section, off, dur, conf, lay = (x[q] for q in ("p", "k", "name", "cdir", "section", "off",
@@ -426,7 +455,7 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             wsel = [w for w in words if w["e"] > a and w["s"] < b]
             if k in tr_lines:
                 wsel = translated_words(wsel, tr_lines[k])
-            build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
+            cap_info = build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
                       lead=caption_lead, brand=brand_cfg)
             mp4 = cdir / f"{name}.mp4"
             rel_ass = ass.relative_to(job).as_posix()
@@ -479,7 +508,7 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
                 else:
                     sync["audio"] = {"status": "unclear", "conf": round(c_out, 2)}
             # part 2: each word must light up on screen at its scheduled (spoken) time
-            sync["captions"] = caption_sync_check(mp4, ass)
+            sync["captions"] = caption_sync_check(mp4, ass, bands=cap_info.get("bands"))
             sa, sc_ = sync["audio"], sync["captions"]
             log(f"    sync: speech {sa['status']}" + (f" ({sa['drift'] * 1000:+.0f} ms)" if "drift" in sa else "")
                 + f", captions {sc_['status']}" + (f" ({sc_['lag'] * 1000:+.0f} ms)" if "lag" in sc_ else ""))

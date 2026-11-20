@@ -20,6 +20,10 @@ CAP_OUTLINE = 9        # contorno preto da legenda, px
 CAP_SHADOW = 5         # deslocamento da sombra, px
 CAP_GLOW = 20          # raio do halo escuro desfocado, px
 HIGHLIGHT = "&H0000E6FF&"   # #FFE600 in ASS BGR
+CAP_Y_BOTTOM = 1265    # base da legenda sem cam (zona segura: acima de ~1300 px)
+CAM_H = 720            # altura do painel da cam no modo facecam (= cl_layout.TOP_H)
+CAM_GAP = 3            # legenda logo abaixo da cam: topo das letras (palavra destacada) a 3 px da divisão
+HL_SCALE = 1.08        # a palavra destacada fica 8% maior
 WHITE = "&H00FFFFFF&"
 EMOJI = re.compile("[\U0001F000-\U0001FFFF☀-➿️‍]")
 STRIP = re.compile(r"^[^\w$%#@&+]+|[^\w%!?$]+$", re.UNICODE)
@@ -49,6 +53,52 @@ def text_width(text: str, size: float, path=CAP_FONT_FILE) -> float:
         adv = hmtx[g][0] if g else upm * 0.6
         total += adv
     return total * em / upm
+
+
+def _cap_metrics():
+    """(altura das maiúsculas, descendente) da fonte da legenda, em fração do tamanho do libass
+    (o libass usa tamanho = winAscent + winDescent)."""
+    try:
+        from fontTools.ttLib import TTFont
+        f = TTFont(str(CAP_FONT_FILE))
+        os2, upm = f["OS/2"], f["head"].unitsPerEm
+        cell = (os2.usWinAscent + os2.usWinDescent) / upm
+        return os2.sCapHeight / upm / cell, os2.usWinDescent / upm / cell
+    except Exception:
+        return 0.448, 0.29   # Montserrat Black
+
+
+def caption_bottom(mode: str, scale: float = 1.0) -> float:
+    """y do an2 (base da caixa da linha) da legenda. Com cam (facecam): logo abaixo do painel da cam, com o
+    topo das letras da palavra destacada a CAM_GAP px da divisão. Sem cam: embaixo, como sempre."""
+    if mode != "facecam":
+        return CAP_Y_BOTTOM
+    cap, desc = _cap_metrics()
+    size = CAP_SIZE * scale * HL_SCALE
+    return CAM_H + CAM_GAP + cap * size + desc * size
+
+
+def caption_band(mode: str) -> tuple:
+    """Faixa (y0, y1) do vídeo onde a legenda aparece (para a conferência de sincronia e a capa)."""
+    if mode == "facecam":
+        return CAM_H - 8, CAM_H + 152
+    return CAP_Y_BOTTOM - 125, CAP_Y_BOTTOM + 35
+
+
+def mode_at(segments, t: float) -> str:
+    if isinstance(segments, str):
+        return segments
+    for sg in segments:
+        if sg.get("t0", 0.0) <= t < sg.get("t1", 1e9):
+            return sg["mode"]
+    return segments[-1]["mode"]
+
+
+def caption_bands(segments, dur: float) -> list:
+    """[(t0, t1, y0, y1)] da legenda ao longo do clipe."""
+    if isinstance(segments, str):
+        return [(0.0, dur) + caption_band(segments)]
+    return [(sg.get("t0", 0.0), sg.get("t1", dur)) + caption_band(sg["mode"]) for sg in segments]
 
 
 def ass_time(t: float) -> str:
@@ -237,7 +287,9 @@ def face_top_out(seg):
 
 def place_hook(hook: str, seg, min_top: float = 24):
     """Big hook at the top of the frame, above the face. Returns (lines, size, plate_top).
-    min_top: com a arroba no canto, o hook começa abaixo dela para não cobri-la."""
+    min_top: com a arroba no canto, o hook começa abaixo dela para não cobri-la.
+    Sem espaço acima do rosto: no modo facecam a legenda fica logo abaixo da cam, então o hook vai para baixo
+    dela (no gameplay); nos outros modos, na divisão dos painéis como antes."""
     face_top = face_top_out(seg)
     limit = (face_top + 4) if face_top is not None else 700   # YuNet's face box starts at the brows
     for size in HOOK_SIZES:
@@ -248,13 +300,15 @@ def place_hook(hook: str, seg, min_top: float = 24):
         top = min(max(70, min_top), limit - plate)
         if top >= min_top:
             return hl, size, top
-    # no room above the face: at the seam between the panels (chest / gameplay top)
+    under_caps = isinstance(seg, dict) and seg.get("mode") == "facecam"
+    below = caption_bottom("facecam") + 28   # topo do hook abaixo da legenda (que fica abaixo da cam)
+    # no room above the face: at the seam between the panels (chest / gameplay top), or under the captions
     for size in HOOK_SIZES:
         hl = wrap(hook, size, HOOK_MAX_W - 76, HOOK_FONT_FILE)
         if len(hl) <= 2:
-            return hl, size, 720 - (len(hl) * size + 44) / 2
+            return hl, size, below if under_caps else 720 - (len(hl) * size + 44) / 2
     hl = wrap(hook, HOOK_SIZES[-1], HOOK_MAX_W - 76, HOOK_FONT_FILE)[:2]
-    return hl, HOOK_SIZES[-1], 720 - (2 * HOOK_SIZES[-1] + 44) / 2
+    return hl, HOOK_SIZES[-1], below if under_caps else 720 - (2 * HOOK_SIZES[-1] + 44) / 2
 
 
 def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs: float = 2.6, censor_on=True,
@@ -271,7 +325,6 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
         if e <= 0.02 or s >= dur - 0.02:
             continue
         ws.append({"s": max(0.0, s), "e": min(dur, e), "w": w["w"]})
-    cap_y = 1265           # bottom of the caption line (safe zone: above ~1300 px)
     lines = [
         "[Script Info]", "ScriptType: v4.00+", "PlayResX: 1080", "PlayResY: 1920",
         "WrapStyle: 2", "ScaledBorderAndShadow: yes", "YCbCr Matrix: TV.709", "",
@@ -333,13 +386,15 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
             parts = []
             for j, t in enumerate(texts):
                 if j == i:
-                    parts.append(f"{{\\1c{HIGHLIGHT}\\fscx{int(108 * scale)}\\fscy{int(108 * scale)}}}{esc(t)}"
+                    hs = int(100 * HL_SCALE * scale)
+                    parts.append(f"{{\\1c{HIGHLIGHT}\\fscx{hs}\\fscy{hs}}}{esc(t)}"
                                  f"{{\\1c{WHITE}\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}}}")
                 else:
                     parts.append(esc(t))
+            cap_y = round(caption_bottom(mode_at(segments, s), scale))   # abaixo da cam quando o trecho tem cam
             pre = f"{{\\an2\\pos(540,{cap_y})\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}}}"
             glow = f"{{\\an2\\pos(540,{cap_y})\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}\\blur12}}"
             lines.append(f"Dialogue: 0,{ass_time(s)},{ass_time(e)},CapGlow,,0,0,0,,{glow}" + " ".join(parts))
             lines.append(f"Dialogue: 1,{ass_time(s)},{ass_time(e)},Cap,,0,0,0,,{pre}" + " ".join(parts))
     write_text(out, "\n".join(lines) + "\n")
-    return {"groups": len(groups), "words": len(ws)}
+    return {"groups": len(groups), "words": len(ws), "bands": caption_bands(segments, dur)}
