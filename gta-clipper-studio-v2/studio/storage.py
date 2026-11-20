@@ -40,6 +40,8 @@ class Settings:
         "youtube_out": str(DEFAULT_YT_OUT),
         "twitch_out": str(DEFAULT_TW_OUT),
         "claude_path": "",
+        "codex_path": "",
+        "agent": "claude",
         "last_platform": YOUTUBE,
         "last_clips": 3,
         "default_legenda": "pt",   # idioma padrão da legenda (pt ou en)
@@ -51,6 +53,8 @@ class Settings:
         self.path = path
         self.data = dict(self.DEFAULTS)
         self.data.update({k: v for k, v in read_json(path, {}).items() if k in self.DEFAULTS})
+        if self.data["agent"] not in ("claude", "codex"):
+            self.data["agent"] = "claude"
 
     def __getitem__(self, k):
         return self.data[k]
@@ -63,6 +67,10 @@ class Settings:
 
     def out_dir(self, platform: str) -> Path:
         return Path(self.data["youtube_out" if platform == YOUTUBE else "twitch_out"]).expanduser()
+
+    @property
+    def agent_path(self) -> str:
+        return self.data[self.data["agent"] + "_path"]
 
     def library_roots(self) -> list[tuple[str, Path]]:
         roots = [(YOUTUBE, self.out_dir(YOUTUBE)), (TWITCH, self.out_dir(TWITCH))]

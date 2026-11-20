@@ -7,6 +7,7 @@ if not exist "%PY%" (
   for /f "delims=" %%i in ('where python 2^>nul ^| findstr /v /i "WindowsApps"') do if not defined PYFOUND set "PYFOUND=%%i"
 )
 if defined PYFOUND set "PY=%PYFOUND%"
+if exist "%~dp0..\.venv\Scripts\python.exe" set "PY=%~dp0..\.venv\Scripts\python.exe"
 if not exist "%PY%" (
   echo Python nao encontrado. Instale em python.org marcando "Add python.exe to PATH".
   pause

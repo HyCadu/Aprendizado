@@ -38,7 +38,8 @@ def main():
     make_icon(ico)
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--windowed",
            "--name", NAME, "--icon", str(ico), "--distpath", str(HERE), "--workpath", str(HERE / "build"),
-           "--specpath", str(HERE / "build"), "--paths", str(HERE)]
+           "--specpath", str(HERE / "build"), "--paths", str(HERE),
+           "--add-data", f"{HERE / 'studio' / 'codex-result.schema.json'};studio"]
     for m in EXCLUDES:
         cmd += ["--exclude-module", m]
     for m in HIDDEN_IMPORTS:

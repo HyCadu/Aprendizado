@@ -1,4 +1,6 @@
 __pycache__/
+.venv/
+.codex-smoke/
 *.pyc
 gta-clipper-studio/build/
 gta-clipper-studio/*.exe

@@ -16,6 +16,7 @@ from .pages.integrations import Integrations
 from .pages.library import Library
 from .pages.settings_page import Settings
 from .state import AppState
+from .system import AGENTS
 from .widgets import AppMark, FadeStack, StatusBar, Toast, TopNav, glyph, icon_font, label
 
 PAGES = ["create", "library", "integrations", "settings"]
@@ -139,14 +140,15 @@ class MainWindow(QMainWindow):
             self.status.set_system(T.SUCCESS, "Sistema pronto")
 
     def _update_auth_status(self):
+        agent = AGENTS[self.state.settings["agent"]]
         labels = {
-            "connected": "Claude Code conectado",
-            "disconnected": "Claude Code desconectado",
-            "checking": "Verificando Claude Code…",
-            "unavailable": "Claude Code indisponível",
+            "connected": f"{agent} conectado",
+            "disconnected": f"{agent} desconectado",
+            "checking": f"Verificando {agent}…",
+            "unavailable": f"{agent} indisponível",
             "auth_error": "Erro de autenticação",
         }
-        self.status.set_auth_status(self.state.auth_status, labels.get(self.state.auth_status, "Claude Code"))
+        self.status.set_auth_status(self.state.auth_status, labels.get(self.state.auth_status, agent))
 
     def _update_youtube_status(self):
         labels = {"connected": "YouTube conectado", "disconnected": "YouTube desconectado",
@@ -162,7 +164,7 @@ class MainWindow(QMainWindow):
             return
         if self.state.auth_status != "connected":
             message = (AUTH_REQUIRED_MESSAGE if self.state.auth_status in ("disconnected", "auth_error") else
-                       "Aguarde a verificação do Claude Code ou confira a autenticação em Configurações.")
+                       "Aguarde a verificação do agente ou confira a autenticação em Configurações.")
             self.toast.show_msg(message, "error")
             return
         if not self.create.start(job):
@@ -171,7 +173,7 @@ class MainWindow(QMainWindow):
         self.nav.set_activity(PAGES.index("create"), True)
         self.status.set_job("Processando · iniciando")
         self.state.history.add({"url": job["url"], "platform": job["platform"], "clips_req": job["clips"],
-                                "legenda": job.get("legenda"), "status": "rodando",
+                                "legenda": job.get("legenda"), "agent": self.state.settings["agent"], "status": "rodando",
                                 "when": time.strftime("%Y-%m-%d %H:%M")})
         self.state.history_changed.emit()
         self.goto("create")

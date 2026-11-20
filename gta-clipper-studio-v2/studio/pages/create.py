@@ -15,14 +15,15 @@ from ..core import AUTH_REQUIRED_MESSAGE, LEGENDAS, MAX_CLIPS, STEP_INDEX, STEPS
     detect_platform, validate_link
 from ..runner import JobRunner
 from ..storage import LOG_DIR, safe_log_name
-from ..system import find_claude, find_python
+from ..system import find_agent, find_python, AGENTS
+from ..codex_agent import build_codex_command
 from ..widgets import (AdaptiveStack, AppMark, Badge, Collapsible, EmptyState, Icon, LinkField, SectionHeader,
                        Select, Spinner, StepProgress, VideoCard, button, clear_layout, divider, elide, label, panel)
 from .common import PLATFORM_COLOR, PLATFORM_LABEL, Page, clip_meta, open_file, open_folder, sync_info
 
-LOG_COLORS = {"info": T.INFO, "cmd": T.SECONDARY, "output": T.MUTED, "claude": T.PRIMARY, "error": T.ERROR,
+LOG_COLORS = {"info": T.INFO, "cmd": T.SECONDARY, "output": T.MUTED, "claude": T.PRIMARY, "agent": T.PRIMARY, "error": T.ERROR,
               "result": T.SUCCESS, "raw": T.DIM}
-LOG_PREFIX = {"info": "●", "cmd": "▶", "output": " ", "claude": "◆", "error": "✖", "result": "✔", "raw": "·"}
+LOG_PREFIX = {"info": "●", "cmd": "▶", "output": " ", "claude": "◆", "agent": "◆", "error": "✖", "result": "✔", "raw": "·"}
 
 
 def _fmt_secs(s: int) -> str:
@@ -255,14 +256,14 @@ class CreatePage(Page):
 
     def _render_deps(self):
         miss = self._missing_deps()
-        claude_ok = bool(find_claude(self.state.settings["claude_path"]))
+        claude_ok = bool(find_agent(self.state.settings["agent"], self.state.settings.agent_path))
         auth_status = self.state.auth_status
         if auth_status == "disconnected":
-            self.dep_text.setText("Claude Code está desconectado. Abra Configurações e clique em Autenticar.")
+            self.dep_text.setText("Agente selecionado está desconectado. Abra Configurações e clique em Autenticar.")
         elif auth_status == "auth_error":
-            self.dep_text.setText("O Claude Code recusou a autenticação. Verifique novamente em Configurações.")
+            self.dep_text.setText("O agente selecionado recusou a autenticação. Verifique novamente em Configurações.")
         elif auth_status == "unavailable" or not claude_ok:
-            self.dep_text.setText("Claude Code não encontrado. Sem ele não dá para gerar clipes.")
+            self.dep_text.setText("Agente selecionado não encontrado. Sem ele não dá para gerar clipes.")
         elif miss:
             self.dep_text.setText(f"Dependência ausente: {', '.join(miss[:3])}"
                                   + (f" e mais {len(miss) - 3}" if len(miss) > 3 else "") + ".")
@@ -283,7 +284,7 @@ class CreatePage(Page):
         if running:
             self.start_btn.setToolTip("Já existe um processamento em andamento.")
         elif checking:
-            self.start_btn.setToolTip("Verificando a autenticação do Claude Code.")
+            self.start_btn.setToolTip("Verificando a autenticação do agente selecionado.")
         elif self.state.auth_status != "connected":
             self.start_btn.setToolTip("A autenticação será verificada antes de gerar os clipes.")
         else:
@@ -319,10 +320,10 @@ class CreatePage(Page):
     def _auth_block_message(self) -> str:
         messages = {
             "disconnected": AUTH_REQUIRED_MESSAGE,
-            "unavailable": "Claude Code não está disponível. Configure ou instale o Claude Code em Configurações.",
-            "auth_error": "Não foi possível confirmar a autenticação do Claude Code. Verifique em Configurações.",
+            "unavailable": "Agente selecionado não está disponível. Configure ou instale o agente selecionado em Configurações.",
+            "auth_error": "Não foi possível confirmar a autenticação do agente selecionado. Verifique em Configurações.",
         }
-        return messages.get(self.state.auth_status, "A autenticação do Claude Code ainda está sendo verificada.")
+        return messages.get(self.state.auth_status, "A autenticação do agente selecionado ainda está sendo verificada.")
 
     def _submit_form(self):
         url = self.link.edit.text().strip()
@@ -407,13 +408,13 @@ class CreatePage(Page):
         rb.addLayout(self.result_row)
         self.result_empty = EmptyState("video", "Nenhum clipe novo",
                                        "Nenhum momento passou da nota mínima, ou o processamento parou antes de "
-                                       "renderizar. Veja a resposta do Claude.", compact=True)
+                                       "renderizar. Veja a resposta do agente.", compact=True)
         rb.addWidget(self.result_empty)
         self.answer = QTextBrowser()
         self.answer.setObjectName("Prose")
         self.answer.setOpenExternalLinks(False)
         self.answer.setMinimumHeight(160)
-        self.answer_sec = Collapsible("Resposta do Claude", self.answer, expanded=False)
+        self.answer_sec = Collapsible("Resposta do agente", self.answer, expanded=False)
         rb.addWidget(self.answer_sec)
         v.addWidget(self.result_box)
 
@@ -452,24 +453,27 @@ class CreatePage(Page):
         return bool(self.runner and self.runner.running())
 
     def start(self, job: dict) -> bool:
-        claude = find_claude(self.state.settings["claude_path"])
+        agent = self.state.settings["agent"]
+        claude = find_agent(agent, self.state.settings.agent_path)
         if not claude:
             self._render_deps()
-            self.state.toast.emit("Claude Code não encontrado. Veja Configurações.", "error")
+            self.state.toast.emit("Agente selecionado não encontrado. Veja Configurações.", "error")
             return False
         out = self.state.settings.out_dir(job["platform"])
         try:
             # --add-dir de pasta inexistente é ignorado e aí ler/escrever no job pede aprovação (que ninguém dá).
             # Criar a pasta não apaga nem altera nada que já exista.
             out.mkdir(parents=True, exist_ok=True)
-            argv, prompt = build_command(claude, job["url"], job["platform"], job["clips"], out, job.get("legenda"))
+            builder = build_codex_command if agent == "codex" else build_command
+            argv, prompt = builder(claude, job["url"], job["platform"], job["clips"], out, job.get("legenda"))
         except (OSError, ValueError) as e:
             self.state.toast.emit(f"Não deu para iniciar: {e}", "error")
             return False
-        self.job = dict(job, prompt=prompt, out=str(out))
+        self.job = dict(job, prompt=prompt, out=str(out), agent=agent)
         self.log_path = LOG_DIR / safe_log_name(job["platform"])
         py = find_python()
-        self.runner = JobRunner(argv, self.log_path, str(Path(py).parent) if py else None, prompt, self)
+        self.runner = JobRunner(argv, self.log_path, str(Path(py).parent) if py else None, prompt, self,
+                                agent=agent, out_dir=out)
         self.runner.event.connect(self._on_event)
         self.runner.finished.connect(self._on_finished)
 
@@ -495,7 +499,7 @@ class CreatePage(Page):
         self.recent_box.hide()
         self.t_start = time.time()
         self.timer.start(1000)
-        self._append(Event("info", f"Comando: claude -p \"{prompt}\" (mesmas permissões do rodar_automatico.ps1)"))
+        self._append(Event("info", f"Agente: {AGENTS[agent]} · {job['url']}"))
         self._append(Event("info", f"Log salvo em {self.log_path}"))
         self._set_step(0)
         self.runner.start()
@@ -601,7 +605,7 @@ class CreatePage(Page):
                 row.set_state("error")
             self.bar.finish("error")
             self.r_title.setText("Erro no processamento")
-            self.r_step.setText(data.get("error") or "Veja a resposta do Claude e os logs técnicos abaixo.")
+            self.r_step.setText(data.get("error") or "Veja a resposta do agente e os logs técnicos abaixo.")
             if data.get("error"):
                 self._append(Event("error", data["error"]))
             if not self.logs.expanded:

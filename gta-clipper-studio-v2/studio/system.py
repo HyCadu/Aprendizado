@@ -12,6 +12,42 @@ from pathlib import Path
 
 from .core import AI_STREAM_CLIPPER, CLIPPER_CONFIG, REPO, SKILLS, is_authentication_error
 from .storage import read_json
+from .codex_agent import find_codex
+
+AGENTS = {"claude": "Claude Code", "codex": "Codex"}
+
+
+def find_agent(agent: str, custom: str = "") -> str | None:
+    return find_codex(custom) if agent == "codex" else find_claude(custom)
+
+
+def check_agent_auth(agent: str, custom: str = "") -> tuple[str, str]:
+    if agent == "claude":
+        return check_claude_auth(custom)
+    executable = find_codex(custom)
+    if not executable:
+        return "unavailable", "Codex não foi encontrado. Configure o executável em Configurações."
+    code, output = run([executable, "login", "status"], timeout=20)
+    status, _ = parse_claude_auth_status(code, output)
+    detail = {"connected": "Codex está autenticado.",
+              "disconnected": "Codex está desconectado. Clique em Autenticar.",
+              "auth_error": "Não foi possível confirmar o login do Codex. Verifique novamente."}
+    return status, detail[status]
+
+
+def launch_agent_login(agent: str, custom: str = "") -> tuple[bool, str]:
+    if agent == "claude":
+        return launch_claude_login(custom)
+    executable = find_codex(custom)
+    if not executable:
+        return False, "Codex não foi encontrado. Configure o executável."
+    try:
+        # Login oficial abre o navegador; o processo auxiliar não precisa de janela de console.
+        subprocess.Popen([executable, "login"], cwd=str(REPO), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    except OSError:
+        return False, "Não foi possível iniciar o login do Codex."
+    return True, "Conclua o login do Codex no navegador e clique em Verificar novamente."
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 SCRIPTS = SKILLS / "cortes-youtube" / "scripts"
@@ -145,7 +181,7 @@ def clipper_config() -> dict:
     return read_json(CLIPPER_CONFIG, {}) or {}
 
 
-def check_all(claude_custom: str = "") -> list[Check]:
+def check_all(claude_custom: str = "", agent: str = "claude") -> list[Check]:
     checks: list[Check] = []
     py = find_python()
     if py:
@@ -160,12 +196,12 @@ def check_all(claude_custom: str = "") -> list[Check]:
     else:
         checks.append(Check("Python", False, "Instale em python.org marcando 'Add python.exe to PATH'."))
 
-    cl = find_claude(claude_custom)
+    cl = find_agent(agent, claude_custom)
     if cl:
         code, out = run([cl, "--version"])
-        checks.append(Check("Claude Code", code == 0, f"{out.strip()}  ·  {cl}"))
+        checks.append(Check(AGENTS[agent], code == 0, f"{out.strip()}  ·  {cl}"))
     else:
-        checks.append(Check("Claude Code", False, "Não encontrado. Rode: irm https://claude.ai/install.ps1 | iex"))
+        checks.append(Check(AGENTS[agent], False, "Não encontrado. Configure o executável em Configurações."))
 
     git = shutil.which("git")
     checks.append(Check("Git", bool(git), git or "Instale em git-scm.com", required=False))

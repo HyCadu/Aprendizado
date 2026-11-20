@@ -1,4 +1,4 @@
-"""Roda o Claude Code (que roda os scripts das skills) num processo separado e emite eventos para a UI."""
+"""Roda o agente selecionado num processo separado e emite eventos para a UI."""
 from __future__ import annotations
 
 import os
@@ -10,6 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
 from .core import AUTH_REQUIRED_MESSAGE, REPO, Event, StreamParser, is_authentication_error, redact
+from .codex_agent import CodexStreamParser, validate_codex_artifacts
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -19,14 +20,16 @@ class JobRunner(QObject):
     finished = Signal(str, object)  # status: ok | erro | cancelado | auth_error ; dados finais (dict)
 
     def __init__(self, argv: list[str], log_path: Path, python_dir: str | None = None, prompt: str = "",
-                 parent=None):
+                 parent=None, *, agent: str = "claude", out_dir: Path | None = None):
         super().__init__(parent)
         self.argv = argv
         self.python_dir = python_dir
         self.prompt = prompt
         self.log_path = log_path
         self.proc: subprocess.Popen | None = None
-        self.parser = StreamParser()
+        self.agent = agent
+        self.out_dir = out_dir
+        self.parser = CodexStreamParser() if agent == "codex" else StreamParser()
         self.cancelled = False
         self.authentication_error = False
         self.started_at = 0.0
@@ -37,6 +40,14 @@ class JobRunner(QObject):
     # ------------------------------------------------------------ ciclo de vida
     def start(self):
         env = dict(os.environ)
+        if self.agent == "codex":
+            # O CLI é um processo independente, não uma ferramenta do chat desktop pai.
+            # Reusar seu transporte privado impede o shell nativo de iniciar no Windows.
+            for key in ("CODEX_WINDOWS_REGISTERED_CORE", "CODEX_WINDOWS_SANDBOX_PACKAGE_FAMILY",
+                        "CODEX_APP_TOOLS_PIPE_PATH", "CODEX_APP_RUNTIME_CLI_PATH",
+                        "CODEX_THREAD_ID", "CODEX_SESSION_ID", "CODEX_TOOL_CALL_ID",
+                        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"):
+                env.pop(key, None)
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
         if self.python_dir:
@@ -50,25 +61,40 @@ class JobRunner(QObject):
         self.started_at = time.time()
         try:
             self.proc = subprocess.Popen(
-                self.argv, cwd=str(REPO), env=env, stdin=subprocess.DEVNULL,
+                self.argv, cwd=str(REPO), env=env,
+                stdin=subprocess.PIPE if self.agent == "codex" else subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
         except OSError as e:
-            self._emit(Event("error", f"Não consegui iniciar o Claude Code: {e}"))
+            self._emit(Event("error", f"Não consegui iniciar o agente: {e}"))
             self._close("erro", {"error": str(e)})
             return
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
+        if self.agent == "codex":
+            threading.Thread(target=self._write_prompt, daemon=True).start()
+
+    def _write_prompt(self):
+        try:
+            self.proc.stdin.write(self.prompt.encode("utf-8"))
+            self.proc.stdin.flush()
+        except OSError:
+            pass  # Falha do processo será reportada por _read_stdout.
+        finally:
+            try:
+                self.proc.stdin.close()
+            except OSError:
+                pass
 
     def running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
     def cancel(self):
-        """Encerra o Claude e todos os processos filhos (python, ffmpeg). Não apaga nenhum arquivo:
+        """Encerra o agente e todos os processos filhos (python, ffmpeg). Não apaga nenhum arquivo:
         o que já foi baixado/transcrito fica na pasta do job."""
         if not self.running():
             return
         self.cancelled = True
-        self._emit(Event("info", "Cancelando: encerrando o Claude Code e os scripts…"))
+        self._emit(Event("info", "Cancelando: encerrando o agente e os scripts…"))
         try:
             if os.name == "nt":
                 subprocess.run(["taskkill", "/PID", str(self.proc.pid), "/T", "/F"],
@@ -108,6 +134,10 @@ class JobRunner(QObject):
         code = self.proc.wait()
         self._stderr_done.wait(timeout=2)
         res = self.parser.result or {}
+        validation_error = ""
+        if self.agent == "codex" and code == 0 and res and not res.get("is_error") and not self.cancelled:
+            validation_error = (validate_codex_artifacts(res, self.out_dir) if self.out_dir else
+                                "Pasta de saída não informada para verificar os artefatos.")
         data = {"returncode": code, "result": redact(str(res.get("result") or "")),
                 "duration_ms": res.get("duration_ms"), "elapsed": time.time() - self.started_at}
         if self.cancelled:
@@ -116,12 +146,12 @@ class JobRunner(QObject):
             status = "auth_error"
             data["error"] = AUTH_REQUIRED_MESSAGE
             data["result"] = ""
-        elif code == 0 and res and not res.get("is_error"):
+        elif code == 0 and res and not res.get("is_error") and not validation_error:
             status = "ok"
         else:
             status = "erro"
-            if not res:
-                data["error"] = f"O Claude Code terminou sem resultado (código {code})."
+            data["error"] = redact(validation_error or str(res.get("result") or
+                                  f"O agente terminou sem resultado (código {code})."))
         self._close(status, data)
 
     def _read_stderr(self):

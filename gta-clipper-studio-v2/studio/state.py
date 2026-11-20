@@ -12,7 +12,7 @@ from .integrations.youtube.client import YouTubeClient
 from .services.publication_service import PublicationService
 from .services.publication_storage import PublicationStorage
 from .storage import History, Settings, scan_library
-from .system import check_all, check_claude_auth, clipper_config, gpu_info
+from .system import check_all, check_agent_auth, clipper_config, gpu_info
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class AppState(QObject):
         self.checking = False
         self.job_running = False
         self.auth_status = "checking"
-        self.auth_detail = "Verificando a autenticação do Claude Code."
+        self.auth_detail = "Verificando a autenticação do agente."
         self._auth_check_id = 0
         self.youtube_status = "checking"
         self.youtube_detail = "Verificando a conexão do YouTube."
@@ -84,10 +84,15 @@ class AppState(QObject):
             return
         self.checking = True
         self.checks_changed.emit()
-        run_async(lambda: (check_all(self.settings["claude_path"]), clipper_config()), on_done=self._checks_done)
+        agent, path = self.settings["agent"], self.settings.agent_path
+        run_async(lambda: (check_all(path, agent), clipper_config()),
+                  on_done=lambda res, err: self._checks_done(res, err, agent, path))
 
-    def _checks_done(self, res, err):
+    def _checks_done(self, res, err, agent=None, path=None):
         self.checking = False
+        if agent is not None and (agent, path) != (self.settings["agent"], self.settings.agent_path):
+            self.refresh_checks()
+            return
         if err is None:
             self.checks, self.cfg = res
         self.checks_changed.emit()
@@ -95,16 +100,15 @@ class AppState(QObject):
     def refresh_auth_status(self):
         self._auth_check_id += 1
         check_id = self._auth_check_id
-        claude_path = self.settings["claude_path"]
-        self.set_auth_status("checking", "Verificando a autenticação do Claude Code.")
-        run_async(check_claude_auth, claude_path,
+        self.set_auth_status("checking", "Verificando a autenticação do agente.")
+        run_async(check_agent_auth, self.settings["agent"], self.settings.agent_path,
                   on_done=lambda res, err: self._auth_done(check_id, res, err))
 
     def _auth_done(self, check_id: int, res, err):
         if check_id != self._auth_check_id:
             return
         if err is not None:
-            self.set_auth_status("auth_error", "Não foi possível verificar a autenticação do Claude Code.")
+            self.set_auth_status("auth_error", "Não foi possível verificar a autenticação do agente.")
             return
         status, detail = res
         self.set_auth_status(status, detail)

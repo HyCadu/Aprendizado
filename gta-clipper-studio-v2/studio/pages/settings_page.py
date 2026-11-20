@@ -13,7 +13,7 @@ from .. import __version__
 from .. import theme as T
 from ..core import DEFAULT_TW_OUT, DEFAULT_YT_OUT, LEGENDAS, MAX_CLIPS, REPO, TWITCH, YOUTUBE
 from ..storage import DATA_DIR, LOG_DIR
-from ..system import find_claude, launch_claude_login
+from ..system import AGENTS, find_agent, launch_agent_login
 from ..widgets import Badge, Icon, SectionHeader, Select, Spinner, button, clear_layout, label, panel
 from .common import Page, open_file, open_folder
 
@@ -138,6 +138,9 @@ class Settings(Page):
 
         # ---------------------------------------------- geral
         box, v = section("Geral")
+        self.agent = Select(list(AGENTS.items()))
+        self.agent.set_key(state.settings["agent"])
+        v.addWidget(field_row("Agente", self.agent, "Usado no próximo processamento."))
         v.addWidget(field_row("Vídeos do YouTube", FolderPicker(state, "youtube_out", DEFAULT_YT_OUT),
                               "Onde o cortes-youtube salva os jobs."))
         v.addWidget(field_row("Lives", FolderPicker(state, "twitch_out", DEFAULT_TW_OUT),
@@ -146,22 +149,22 @@ class Settings(Page):
         ch = QHBoxLayout(cl)
         ch.setContentsMargins(0, 0, 0, 0)
         ch.setSpacing(T.SP2)
-        self.claude = QLineEdit(state.settings["claude_path"] or (find_claude() or ""))
+        self.claude = QLineEdit(state.settings.agent_path or (find_agent(state.settings["agent"]) or ""))
         self.claude.setPlaceholderText("detectado automaticamente")
         self.claude.setReadOnly(True)
         ch.addWidget(self.claude, 1)
         cb = button("Escolher", "terminal")
         cb.clicked.connect(self._choose_claude)
         ch.addWidget(cb)
-        v.addWidget(field_row("Claude Code", cl, "Executa as skills de corte."))
+        v.addWidget(field_row("Executável do agente", cl, "Executa as instruções de corte."))
         lang = Select([("pt-BR", "Português (Brasil)")])
         lang.setEnabled(False)
         v.addWidget(field_row("Idioma do app", lang, "Único idioma disponível por enquanto."))
         self.body.addWidget(box)
 
         # ---------------------------------------------- autenticação
-        box, v = section("Autenticação do Claude Code",
-                         "Use o login oficial do Claude Code instalado neste computador.")
+        box, v = section("Autenticação",
+                         "Use o login oficial do agente selecionado neste computador.")
         auth_row = QHBoxLayout()
         auth_row.setSpacing(T.SP3)
         self.auth_spinner = Spinner(14)
@@ -172,7 +175,7 @@ class Settings(Page):
         auth_text = QVBoxLayout()
         auth_text.setSpacing(2)
         self.auth_title = label("Verificando", "H3")
-        self.auth_detail = label("Verificando a autenticação do Claude Code.", "Dim", wrap=True)
+        self.auth_detail = label("Verificando a autenticação do agente.", "Dim", wrap=True)
         auth_text.addWidget(self.auth_title)
         auth_text.addWidget(self.auth_detail)
         auth_row.addLayout(auth_text, 1)
@@ -189,7 +192,7 @@ class Settings(Page):
         self.body.addWidget(box)
 
         # ---------------------------------------------- processamento
-        box, v = section("Processamento", "Definido pelo setup das skills. Para mudar, peça no Claude: "
+        box, v = section("Processamento", "Definido pelo setup das skills. Para mudar, peça ao agente: "
                                           "configura o clipper.")
         self.proc = QGridLayout()
         self.proc.setHorizontalSpacing(T.SP6)
@@ -207,7 +210,7 @@ class Settings(Page):
                               "Pré-selecionado em Criar cortes. A skill traduz quando o vídeo é em outro idioma."))
         for name, text in (
                 ("Sincronia", "Medida em cada clipe: fala ±40 ms e destaque da legenda ±120 ms (no report.md)."),
-                ("Ajuste fino", "Se a legenda parecer adiantada ou atrasada, peça no Claude: "
+                ("Ajuste fino", "Se a legenda parecer adiantada ou atrasada, peça ao agente: "
                                 "\"a legenda do clipe 2 está atrasada, ajusta\"."),
                 ("Palavrões", "Mascarados na legenda e no título (P*RRA, F*CK).")):
             v.addWidget(field_row(name, label(text, "Muted", wrap=True)))
@@ -251,7 +254,7 @@ class Settings(Page):
         self.b_check = button("Verificar agora", "refresh")
         self.b_check.clicked.connect(state.refresh_checks)
         rh.addWidget(self.b_check)
-        box, v = section("Dependências", "Python, Claude Code, FFmpeg, skills e transcrição.", right)
+        box, v = section("Dependências", "Python, agente, FFmpeg, skills e transcrição.", right)
         self.checks = QVBoxLayout()
         self.checks.setSpacing(0)
         v.addLayout(self.checks)
@@ -288,6 +291,7 @@ class Settings(Page):
         state.checks_changed.connect(self._render_checks)
         state.auth_changed.connect(self._render_auth)
         state.gpu_changed.connect(self._render_gpu)
+        self.agent.currentIndexChanged.connect(self._save_agent)
         self._render_auth()
 
     # ------------------------------------------------------------
@@ -307,16 +311,17 @@ class Settings(Page):
         self.state.default_lang_changed.emit(self.def_lang.key())
 
     def _choose_claude(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Onde está o claude.exe?", str(Path.home()), "claude (*.exe *.cmd)")
+        agent = self.state.settings["agent"]
+        f, _ = QFileDialog.getOpenFileName(self, f"Onde está o {agent}?", str(Path.home()), "Agente (*.exe *.cmd)")
         if f:
             self.claude.setText(f)
-            self.state.settings["claude_path"] = f
+            self.state.settings[agent + "_path"] = f
             self.state.settings.save()
             self.state.refresh_checks()
             self.state.refresh_auth_status()
 
     def _authenticate(self):
-        ok, message = launch_claude_login(self.state.settings["claude_path"])
+        ok, message = launch_agent_login(self.state.settings["agent"], self.state.settings.agent_path)
         self.auth_detail.setText(message)
         self.state.toast.emit(message, "info" if ok else "error")
 
@@ -336,7 +341,22 @@ class Settings(Page):
         self.auth_icon.setVisible(status != "checking")
         self.auth_icon.set(icon, color)
         self.b_auth_check.setEnabled(status != "checking")
-        self.b_authenticate.setEnabled(status != "checking" and bool(find_claude(self.state.settings["claude_path"])))
+        self.b_authenticate.setEnabled(status != "checking" and bool(find_agent(
+            self.state.settings["agent"], self.state.settings.agent_path)))
+
+    def _save_agent(self):
+        if self.state.job_running:
+            self.agent.blockSignals(True)
+            self.agent.set_key(self.state.settings["agent"])
+            self.agent.blockSignals(False)
+            self.state.toast.emit("Aguarde o processamento terminar antes de trocar o agente.", "warn")
+            return
+        self.state.settings["agent"] = self.agent.key()
+        self.state.settings.save()
+        self.claude.setText(self.state.settings.agent_path or (find_agent(self.agent.key()) or ""))
+        self.state.checks = []
+        self.state.refresh_auth_status()
+        self.state.refresh_checks()
 
     def _open_last_log(self):
         logs = sorted(LOG_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True) if LOG_DIR.is_dir() else []
@@ -366,7 +386,7 @@ class Settings(Page):
             self.checks.addWidget(CheckRow(c))
         bad = [c for c in self.state.checks if c.required and not c.ok]
         self.fix.setText("Tudo certo para cortar." if not bad else
-                         "Para resolver: abra o PowerShell na pasta do projeto, digite claude e peça "
+                         "Para resolver: abra o PowerShell na pasta do projeto, abra o agente selecionado e peça "
                          "\"configura o clipper\". Detalhes no README.")
         clear_layout(self.proc)
         cfg = self.state.cfg

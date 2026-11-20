@@ -1,5 +1,36 @@
 # GTA CLIPPER STUDIO
 
+## Usar o Codex (adaptação mínima da V2)
+
+Em **Configurações > Geral > Agente**, escolha **Codex**. O app detecta `codex` no PATH;
+se necessário, indique o executável. Em **Autenticação**, faça o login oficial e clique em
+**Verificar novamente**. Em **Criar cortes**, informe o link, a quantidade e o idioma normalmente.
+As configurações existentes continuam usando Claude até a troca manual. Não há troca automática
+de agente quando uma execução falha.
+
+O Codex roda por `codex exec --json`, com sandbox `workspace-write`, rede habilitada para os
+downloads e acesso à pasta de saída selecionada. Solicitações de permissão não aprovadas falham
+sem bloquear a interface. O app envia o pedido por stdin e verifica os MP4s e o `report.md` antes
+de considerar o resultado concluído. Nesta primeira versão, `sync check` requer revisão e é
+apresentado como erro de validação; somente `sync ok` passa automaticamente.
+
+Os scripts e instruções de `.claude/skills` são reutilizados por caminho explícito; não é necessário
+o Claude Code para o processamento com Codex. Para lives, a instalação prévia de
+`%USERPROFILE%\.claude\skills\ai-stream-clipper` com o patch pt-BR continua necessária.
+O setup de Python, FFmpeg e transcrição deve estar pronto antes de iniciar o corte.
+
+Para executar um teste pelo terminal, com o mesmo adaptador da interface:
+
+```powershell
+python gta-clipper-studio-v2/rodar_codex.py "https://www.youtube.com/watch?v=EWLoiyFsMuk" --top 1 --legenda pt
+```
+
+Se as dependências da interface estiverem no ambiente local, use `.\.venv\Scripts\python.exe` no
+lugar de `python`. `--out CAMINHO` permite definir a pasta; os logs ficam em `CAMINHO/logs`.
+O lançador `.bat` também usa `.venv` quando disponível. Para atualizar um `.exe` antigo, gere-o
+novamente com `build_exe.py`. Os scripts antigos `rodar_automatico.ps1/.sh` e a interface V1
+continuam com Claude; OpenCode e a migração dos agendamentos ficam fora desta adaptação mínima.
+
 Programa para Windows (janela própria, feito em Python + PySide6) que faz pela interface o que o
 `/cortes-youtube` e o `/clipar-gta-br` fazem no terminal.
 
@@ -21,7 +52,7 @@ Isso cria `gta-clipper-studio-v2\GTA Clipper Studio.exe`, um arquivo só (~60 MB
 fora do git. Rode de novo sempre que atualizar o projeto.
 O `.exe` precisa continuar **dentro da pasta do projeto**, porque usa as skills de `.claude\skills`. Para
 abrir de outro lugar, use o atalho (abaixo) em vez de mover o arquivo. O processamento continua usando o
-Python e o Claude Code instalados no computador.
+Python e o agente selecionado (Claude Code ou Codex) instalados no computador.
 
 Para ter um atalho na Área de Trabalho, rode isto uma vez no PowerShell, na pasta `Aprendizado`:
 ```
@@ -43,22 +74,24 @@ Pelo terminal também funciona: `python gta-clipper-studio-v2\main.py`.
 
 ## Como funciona por dentro
 
-O app **não refaz o processamento**. Ele roda o mesmo comando dos `rodar_automatico.ps1`, em outro
-processo (a janela não trava):
+O app **não refaz o processamento**. Com Claude selecionado, ele roda o mesmo comando dos
+`rodar_automatico.ps1`, em outro processo (a janela não trava):
 
 ```
 claude -p "/cortes-youtube LINK --top N"              (YouTube)
 claude -p "/clipar-gta-br LINK (só N cortes por live)" (Twitch)
 ```
 
-As permissões também são as mesmas: só `python`, `Read`, `Write` e `Glob`. Nenhuma ferramenta que
-publique alguma coisa fica liberada. O app só acrescenta `--output-format stream-json` para ler cada
-passo e mostrar os logs e as etapas na hora.
+Nesse modo, o app mantém a lista de ferramentas permitidas do Claude e acrescenta
+`--output-format stream-json` para mostrar os logs e as etapas. Com Codex selecionado, usa
+`codex exec --json` e o sandbox descrito acima; a lista `--allowedTools` do Claude não se aplica.
+O pedido ao agente proíbe publicação; a publicação pela interface continua exigindo sua confirmação.
 
 | Arquivo | Para quê |
 |---|---|
 | `studio/core.py` | Valida o link, monta o comando, lê os eventos do Claude, define a etapa e mascara credenciais |
-| `studio/runner.py` | Processo separado, leitura dos logs e cancelamento (encerra o Claude e todos os scripts filhos) |
+| `studio/codex_agent.py` | Monta o pedido do Codex, interpreta seus eventos e verifica os artefatos |
+| `studio/runner.py` | Processo separado, leitura dos logs e cancelamento do agente e dos scripts filhos |
 | `studio/storage.py` | Configurações, histórico e leitura das pastas de cortes (somente leitura) |
 | `studio/system.py` | Verificação das dependências e da GPU (`nvidia-smi`). Só lê, não instala nada |
 | `studio/pages/` | As telas |

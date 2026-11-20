@@ -131,7 +131,7 @@ class Step:
 # As etapas são detectadas pelos eventos reais do Claude (comandos e arquivos). Não há porcentagem:
 # o pipeline não informa quanto falta dentro de cada etapa, então a interface não inventa.
 STEPS = [
-    Step("start", "Iniciando o Claude Code"),
+    Step("start", "Iniciando o agente"),
     Step("verify", "Verificando o link"),
     Step("prepare", "Baixando e transcrevendo"),
     Step("pick", "Escolhendo os momentos"),
@@ -170,6 +170,7 @@ def step_for_file(tool: str, path: str) -> str | None:
 
 # ---------------------------------------------------------------- segredos
 _SECRET_PATTERNS = [
+    (re.compile(r"sk-[A-Za-z0-9_\-]{8,}"), "sk-••••••"),
     (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), "sk-ant-••••••"),
     (re.compile(r"(?i)(api[_-]?key|access[_-]?token|auth[_-]?token|token|password|senha|secret|cookie)"
                 r"(\s*[:=]\s*)[\"']?[^\s\"',;]{6,}"), r"\1\2••••••"),
@@ -178,7 +179,7 @@ _SECRET_PATTERNS = [
 
 
 AUTH_REQUIRED_MESSAGE = (
-    "A autenticação do Claude Code falhou. Abra Configurações > Autenticação, clique em Autenticar "
+    "A autenticação do agente falhou. Abra Configurações > Autenticação, clique em Autenticar "
     "e depois em Verificar novamente. Os dados do formulário foram mantidos."
 )
 
@@ -198,6 +199,11 @@ def is_authentication_error(text: str) -> bool:
         "oauth token has expired",
         "invalid api key",
         "api key not found",
+        "please run codex login",
+        "please run `codex login`",
+        "refresh_token_reused",
+        "token_expired",
+        "401 unauthorized",
     ))
 
 

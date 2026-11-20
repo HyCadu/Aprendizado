@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"type": "string", "enum": ["ok", "pulado", "erro"]},
+    "summary": {"type": "string"},
+    "clips": {"type": "array", "items": {"type": "string"}},
+    "report": {"type": "string"}
+  },
+  "required": ["status", "summary", "clips", "report"],
+  "additionalProperties": false
+}
