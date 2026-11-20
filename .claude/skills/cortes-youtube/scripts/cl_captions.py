@@ -172,7 +172,7 @@ HANDLE_RE = re.compile(r"^@?[A-Za-z0-9_.]{1,30}$")
 
 
 def clean_handle(h) -> str:
-    """'leonidacortes3' / '@leonidacortes3' -> '@leonidacortes3'; qualquer outra coisa -> ''."""
+    """'perfil' / '@perfil' -> '@perfil'; qualquer outra coisa -> ''."""
     h = (h or "").strip()
     return ("@" + h.lstrip("@")) if HANDLE_RE.match(h) else ""
 

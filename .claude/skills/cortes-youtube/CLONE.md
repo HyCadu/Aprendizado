@@ -9,6 +9,10 @@ Mudanças em relação ao original:
 - Qualquer duração: até 60 min, trechos de 5 min e leitura completa; mais longo, trechos de 10 min e leitura
   econômica (~40%). `--smart` / `--read-all` forçam um ou outro.
 - O idioma do áudio é sempre detectado, mesmo com `--lang` forçado, e o `prepare` avisa quando o palpite parece errado.
+- `setup`: recusa o Python da Microsoft Store (explica e instala o do python.org), testa a leitura de áudio e
+  instala `av<17` se o PyAV quebrar o faster-whisper, e baixa o modelo para `~/.ai-stream-clipper/models/<nome>`
+  com download vigiado e plano B direto (curl). A transcrição carrega dessa pasta, sem rede.
+  `cl_setup.py` e `cl_transcribe.py` também são idênticos nas duas skills (vão no patch da de lives).
 - Saída em `~/CortesYouTube` (o original usa `~/StreamClipper`).
 - Palavras-chave e hashtags pt-BR para gameplay de GTA editado.
 - `SKILL.md` reescrito para vídeos editados (música, efeitos, cutscenes, vinhetas).

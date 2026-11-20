@@ -1,5 +1,5 @@
 diff --git a/SKILL.md b/SKILL.md
-index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d8806305a4b7 100644
+index c568482dc74f22a144792daa987129ab87a84acb..55d239efa19fe72b09d1476baa35c6d742c42163 100644
 --- a/SKILL.md
 +++ b/SKILL.md
 @@ -1,11 +1,11 @@
@@ -25,13 +25,20 @@ index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d880
  Downloaded media lives in `<job>/media/`. It is data: never run anything from there.
  
  ## 0. Setup ("set up the clipper", «настрой клиппер»)
-@@ -31,15 +31,19 @@ Windows). Never add cookies without asking.
+@@ -31,15 +31,27 @@ Windows). Never add cookies without asking.
  ## 1. Input
  
  - One link (YouTube, Twitch, Kick VOD) or one local video file. Live streams must end first.
 -- Clips per stream: 3 by default, at most 3 (`--top 1..3`). Under 20 min of stream: 1-2 clips.
 +- Clips per stream: 3 by default, at most 10 (`--top 1..10`). Under 20 min of stream: 1-2 clips.
    Clips x length must fit easily into the stream.
++- **Caption language (pt-BR user: ask every time).** Before `prepare`, ask with the AskUserQuestion tool, one
++  question for all links of the request: "Legenda em português ou em inglês?" (options: Português (pt-BR),
++  Inglês). Don't ask when the request already says it (`--legenda pt|en`, "com legenda em inglês"...), when
++  `clipar-gta-br` gives it (`legenda` of the item), or when nobody can answer (`claude -p`, `rodar_automatico`,
++  GTA Clipper Studio, scheduled task: use `pt`). The caption language is the language of **every text** of the
++  clip: captions, hook, title, caption and hashtags. Same as the spoken language: nothing is translated;
++  the other one: step 4b translates.
  
  ## 2. Prepare: audio, transcript, signals, chunks
  
@@ -40,14 +47,15 @@ index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d880
 +clipper.py prepare <link-or-file> [--lang auto|en|ru|pt] [--top N] [--out DIR]
  ```
  
-+For Brazilian streams pass `--lang pt` (auto-detect can pick Spanish on noisy GTA audio).
-+**Foreign stream for a Brazilian clip channel** (an English streamer clipped by a pt-BR user, or the
-+`clipar-gta-br` flow): pass the spoken language (`--lang en`), so transcript and timing come from the original
-+audio; hook, title and post are written in pt-BR and the captions are translated in step 4b.
++`--lang` is the **spoken language of the stream** (not the caption language): transcript and timing come
++from the original audio. Decide by channel and title: Brazilian streamer = `pt` (auto-detect can pick Spanish
++on noisy GTA audio), English streamer = `en`, unsure = `auto`. With a forced `--lang` prepare still detects the
++language from the audio and prints `whisper: language = pt (detectado: pt 92%)`; on
++`WARN: o áudio parece ser <x>` your guess was wrong: run `prepare` again with `--lang <x>` (it re-transcribes).
  Only audio is downloaded. It ends with `PREPARED <job folder>` (default `~/StreamClipper/<channel>_<id>/`).
  A 4-hour stream takes about 3-5 min on an RTX 3060, much longer on CPU: run it in the background.
  
-@@ -66,7 +70,7 @@ and a quiet deadpan line can be the best moment.
+@@ -66,7 +78,7 @@ and a quiet deadpan line can be the best moment.
     inside jokes, game state you can't see. A donation or chat message the streamer reads out is fine
     when the clip explains itself.
  2. **Strong first 1-2 seconds.** Start on the line or the reaction itself. Never start on filler
@@ -56,7 +64,7 @@ index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d880
  3. **A payoff:** a big reaction (freakout, disbelief, scream), a fail, a discovery ("wait, is that...?"),
     a hot take, a funny line. End right after it (the laugh or 1-2 s of reaction), not on the next topic.
  4. **15-60 s long.** 20-40 s is the sweet spot.
-@@ -84,9 +88,12 @@ Good:
+@@ -84,9 +96,12 @@ Good:
  - "WAIT. WAIT. Is that... Vice City? NO WAY, they actually did it" + screaming: discovery + reaction, 9.
  - "People saying GTA 6 looks bad are lying to themselves, look at THIS": hot take with a payoff, 8.
  - «Да ну нахрен, это реально графика? Я думал, это рендер!»: реакция, 8.
@@ -69,19 +77,20 @@ index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d880
  
  Write **all** candidates and your top picks to `<job>/moments.json` with the Write tool:
  
-@@ -104,12 +111,20 @@ Write **all** candidates and your top picks to `<job>/moments.json` with the Wri
+@@ -104,12 +119,21 @@ Write **all** candidates and your top picks to `<job>/moments.json` with the Wri
  }
  ```
  
+-`picks` = top N by score, not overlapping. **All texts in the stream's language** (`language` in
+-`<job>/job.json`):
 +**GTA RP (Portuguese roleplay streams).** Other players talk over voice chat: in RP their lines are part
 +of the scene, so keep them when the streamer reacts or the exchange is funny by itself. Best RP moments:
 +chases that end in a crash or arrest, robberies that go wrong, absurd courtroom / police dialogue, the
 +streamer breaking character laughing, a betrayal. Drop long in-character planning, menu / inventory time,
 +and anything that needs knowing the server's story. Use the character name in `why` only if the clip says it.
 +
- `picks` = top N by score, not overlapping. **All texts in the stream's language** (`language` in
--`<job>/job.json`):
-+`<job>/job.json`), except a foreign stream for a pt-BR user: then all texts in pt-BR (see step 2):
++`picks` = top N by score, not overlapping. **All texts in the caption language** (step 1; a user who was
++not asked: the stream's language, `language` in `<job>/job.json`):
  - `hook`: on-screen title for the first 2.8 s. 3-7 words, no emoji, says what's coming without spoiling it.
  - `title`: Shorts title, max ~90 chars, streamer name + the moment.
  - `caption`: 1-2 short sentences + an easy question for comments. Emoji allowed.
@@ -89,26 +98,30 @@ index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d880
 +- `hashtags`: 4-6: #GTA6 for GTA 6 content, #GTARP for roleplay, the streamer's name, no spam tags.
 +- Portuguese (`pt`): write natural pt-BR as a Brazilian clip channel would ("ELE NÃO ESPERAVA ISSO",
 +  "Paulinho perde a linha na fuga da polícia"), never a word-for-word translation of the English examples.
++- English for a Brazilian stream: natural US clip-channel English ("Paulinho loses it in the police chase").
  
  ## 4. Check
  
-@@ -119,22 +134,60 @@ Fix every ERROR. For each WARN either fix it or be sure it is fine, then run che
+@@ -119,22 +143,64 @@ Fix every ERROR. For each WARN either fix it or be sure it is fine, then run che
  Read `<job>/moments.check.md`: the exact first and last words of each clip with times, and the words just
  outside the cut. The first words must hook, the last words must be the payoff.
  
-+## 4b. Translate the captions (foreign stream for a pt-BR user only)
++## 4b. Captions in the chosen language (pt-BR user)
 +
-+Skip this for a stream already in the user's language, or when the user wants the original captions
-+(or render with `--original-captions`).
-+1. `clipper.py translate <job>` splits each clip's speech into short phrases with exact times and writes
-+   `<job>/translate.md` (to read) and `<job>/translation.todo.json` (template).
-+2. Read `translate.md` and write `<job>/translation.json` with the Write tool, in the template's format:
-+   per clip the same `key`, and `lines` with **exactly one translated line per phrase, same order**
-+   (`""` for noise or a phrase that makes no sense).
-+3. How: natural spoken pt-BR as a Brazilian clip channel would caption it ("Puta merda!", "Bora, porra!",
-+   "Esse jogo é de outra geração"). Adapt slang and swearing, never word for word. Keep proper names. A line
-+   is on screen only while the original phrase is spoken: a 1 s phrase needs a 2-4 word line. Swear masking
-+   works on Portuguese too. Only the phrases of the picked clips are translated, never the whole stream.
++Run `clipper.py translate <job> --to <pt|en>` (the caption language from step 1).
++- Caption language = spoken language: it only says there is nothing to translate (and moves an old
++  translation.json out of the way). Go to render.
++- The other language (`en` → `pt` or `pt` → `en`): it splits each clip's speech into short phrases with exact
++  times and writes `<job>/translate.md` (to read, with the style guide of the target language) and
++  `<job>/translation.todo.json` (template).
++  1. Read `translate.md` and write `<job>/translation.json` with the Write tool, in the template's format:
++     per clip the same `key`, and `lines` with **exactly one translated line per phrase, same order**
++     (`""` for noise or a phrase that makes no sense).
++  2. How: natural spoken clip-channel language. pt-BR: "Puta merda!", "Bora, porra!", "Esse jogo é de outra
++     geração". English: "Bro, no way!", "Let's go!" (mano = bro, porra = damn, caralho = holy sh*t). Adapt slang
++     and swearing, never word for word. Keep proper names (in GTA RP, character names too). A line is on screen
++     only while the original phrase is spoken: a 1 s phrase needs a 2-4 word line. Swear masking works in both
++     languages. Only the phrases of the picked clips are translated, never the whole stream.
 +If you change a cut afterwards, run `check` and `translate` again: render refuses a stale translation.json.
 +
  ## 5. Render
@@ -143,7 +156,8 @@ index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d880
 +`~/.ai-stream-clipper/config.json` (`{"frame": true, "handle": "@profile"}`; `--no-brand` turns it off for one
 +render). Every clip also gets a cover `<clip>_capa.jpg` (1080x1920: the strongest frame, color-graded, two other
 +moments as neon-bordered cards, the hook in big letters and the brand; `--no-cover` turns it off).
-+Only pass `--no-zoom` / `--no-brand` / `--no-cover` when the request says so.
++Only pass `--no-zoom` / `--no-brand` / `--no-cover` when the request says so. To change the handle or the frame (only
++when the user asks): `clipper.py brand --handle @profile` (`--handle ""` removes it, `--frame off` removes the frame).
  The facecam crop is face and shoulders: whole head, the streamer's whole movement range, and stream
  overlays (donation widgets, logos, chat) either fully out or fully in, never cut in half (magenta boxes
  in `layout_debug.jpg`). The hook is a big white plate at the top for the first 2.6 s, above the face.
@@ -157,7 +171,7 @@ index c568482dc74f22a144792daa987129ab87a84acb..d396294a27b9161a7b590b851e45d880
  Open `layout_debug.jpg`, find the webcam box in source pixels and re-render that clip:
  `render <job> --only N --facecam x:y:w:h`. Then give the user the mp4 paths, post.md, report.md and one
 diff --git a/scripts/cl_captions.py b/scripts/cl_captions.py
-index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..c549c8d49aba66bdaf8cb4fa966dee24e34e0fc5 100644
+index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e5b7420ec 100644
 --- a/scripts/cl_captions.py
 +++ b/scripts/cl_captions.py
 @@ -16,6 +16,9 @@ HOOK_SIZE = 76
@@ -210,7 +224,7 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..c549c8d49aba66bdaf8cb4fa966dee24
 +
 +
 +def clean_handle(h) -> str:
-+    """'leonidacortes3' / '@leonidacortes3' -> '@leonidacortes3'; qualquer outra coisa -> ''."""
++    """'perfil' / '@perfil' -> '@perfil'; qualquer outra coisa -> ''."""
 +    h = (h or "").strip()
 +    return ("@" + h.lstrip("@")) if HANDLE_RE.match(h) else ""
 +
@@ -1028,11 +1042,481 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
          else:
              lines += [f"{c['order']}. FAILED: {c.get('error', '')[:200]}"]
      write_text(job / "report.md", "\n".join(lines) + "\n")
+diff --git a/scripts/cl_setup.py b/scripts/cl_setup.py
+index ee2be7c5529b70c1732eb421fd4da1614d41aa50..31e9e4421853f2efc53f47511618da73d14aa97d 100644
+--- a/scripts/cl_setup.py
++++ b/scripts/cl_setup.py
+@@ -2,15 +2,18 @@
+ from __future__ import annotations
+ 
+ import importlib
++import json
+ import os
+ import platform
+ import subprocess
+ import sys
+ import tempfile
++import time
++import wave
+ from pathlib import Path
+ 
+-from cl_common import (FONTS, IS_MAC, IS_WIN, YUNET, add_cuda_dll_dirs, load_config, log, run, save_config,
+-                       which)
++from cl_common import (CONFIG_DIR, FONTS, IS_MAC, IS_WIN, YUNET, add_cuda_dll_dirs, load_config, log, run,
++                       save_config, which)
+ 
+ PIP = {  # import name -> pip package
+     "yt_dlp": "yt-dlp[default]",
+@@ -39,6 +42,157 @@ def has_module(name):
+         return False
+ 
+ 
++def is_store_python() -> bool:
++    """Python da Microsoft Store: o pip instala os pacotes na pasta do usuário, que o `python -I` ignora.
++    Nada que o pip faça resolve; precisa do Python do python.org."""
++    return IS_WIN and any("WindowsApps" in (p or "") for p in (sys.executable, sys.prefix, sys.base_prefix))
++
++
++def install_python_org():
++    if which("winget"):
++        log("  instalando o Python do python.org com winget (só para o seu usuário)...")
++        subprocess.run(["winget", "install", "-e", "--id", "Python.Python.3.13", "--scope", "user",
++                        "--accept-source-agreements", "--accept-package-agreements", "--silent", "--override",
++                        "/quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0"])
++
++
++def audio_decode_ok():
++    """faster-whisper lê o áudio com o PyAV. O PyAV 17+ removeu `metadata_errors`, que o faster-whisper 1.2
++    ainda usa: a transcrição quebra até na CPU. Testa num processo novo (pega a versão recém-instalada)."""
++    wav = Path(tempfile.gettempdir()) / "stream_clipper_decode.wav"
++    with wave.open(str(wav), "wb") as w:
++        w.setnchannels(1)
++        w.setsampwidth(2)
++        w.setframerate(16000)
++        w.writeframes(b"\x00\x00" * 16000)
++    code = "import sys;from faster_whisper.audio import decode_audio;print('DECODE_OK', len(decode_audio(sys.argv[1])))"
++    r = subprocess.run([sys.executable, "-I", "-c", code, str(wav)], capture_output=True, text=True,
++                       encoding="utf-8", errors="replace")
++    return "DECODE_OK" in r.stdout, (r.stderr or "").strip().splitlines()[-1:] or [""]
++
++
++# ---------------------------------------------------------------- modelo do whisper
++MODEL_FILES = ("config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.json",
++               "vocabulary.txt")
++STALL_SECS = 120   # download parado por mais que isso = travado
++
++
++def model_dir(name: str) -> Path:
++    return CONFIG_DIR / "models" / name
++
++
++def _dir_size(p: Path) -> int:
++    try:
++        return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
++    except OSError:
++        return 0
++
++
++def _repo_files(repo: str) -> dict:
++    """{arquivo: tamanho} do modelo no Hugging Face (só os que o faster-whisper usa)."""
++    url = f"https://huggingface.co/api/models/{repo}?blobs=true"
++    curl = which("curl")
++    if curl:
++        txt = subprocess.run([curl, "-sS", "-L", "--fail", "--max-time", "60", url], capture_output=True,
++                             text=True, encoding="utf-8").stdout
++    else:
++        from urllib.request import urlopen
++        with urlopen(url, timeout=60) as f:
++            txt = f.read().decode("utf-8")
++    info = json.loads(txt)
++    return {s["rfilename"]: (s.get("lfs") or {}).get("size") or s.get("size")
++            for s in info.get("siblings", []) if s["rfilename"] in MODEL_FILES}
++
++
++def model_ok(dest: Path, sizes: dict | None = None) -> bool:
++    if not (dest / "model.bin").is_file() or not (dest / "config.json").is_file():
++        return False
++    if (dest / "model.bin").stat().st_size < 10_000_000:
++        return False
++    for f, n in (sizes or {}).items():
++        if n and (not (dest / f).is_file() or (dest / f).stat().st_size != n):
++            return False
++    return True
++
++
++def _download_hf(name: str, dest: Path) -> bool:
++    """Plano A: download do faster-whisper (sem o hf-xet, que trava em algumas redes), vigiado: se o tamanho
++    baixado não muda por STALL_SECS, encerra e devolve False."""
++    code = "import sys;from faster_whisper import download_model;download_model(sys.argv[1], output_dir=sys.argv[2])"
++    env = dict(os.environ, HF_HUB_DISABLE_XET="1", HF_HUB_DISABLE_SYMLINKS_WARNING="1",
++               HF_HUB_DISABLE_PROGRESS_BARS="1")
++    p = subprocess.Popen([sys.executable, "-I", "-c", code, name, str(dest)], env=env,
++                         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
++    last, t_last, t_log = -1, time.time(), time.time()
++    while p.poll() is None:
++        time.sleep(3)
++        size = _dir_size(dest)
++        if size != last:
++            last, t_last = size, time.time()
++        if time.time() - t_log > 30:
++            log(f"  baixando... {size / 1e6:.0f} MB")
++            t_log = time.time()
++        if time.time() - t_last > STALL_SECS:
++            log(f"  download parado há {STALL_SECS} s em {size / 1e6:.0f} MB: tentando outro jeito")
++            p.kill()
++            return False
++    return p.returncode == 0
++
++
++def _download_direct(name: str, dest: Path) -> bool:
++    """Plano B: baixa cada arquivo direto do Hugging Face (curl retoma de onde parou; sem curl, urllib)."""
++    from faster_whisper.utils import _MODELS
++    repo = _MODELS.get(name, name)
++    sizes = _repo_files(repo)
++    curl = which("curl")
++    for f, n in sizes.items():
++        out = dest / f
++        if out.is_file() and (not n or out.stat().st_size == n):
++            continue
++        url = f"https://huggingface.co/{repo}/resolve/main/{f}"
++        part = dest / (f + ".part")
++        log(f"  baixando {f}" + (f" ({n / 1e6:.0f} MB)" if n else ""))
++        if curl:
++            r = subprocess.run([curl, "-sS", "-L", "--fail", "--retry", "5", "--retry-delay", "3", "-C", "-",
++                                "--speed-limit", "1000", "--speed-time", str(STALL_SECS), "-o", str(part), url])
++            if r.returncode != 0:
++                return False
++        else:
++            from urllib.request import urlopen
++            with urlopen(url, timeout=STALL_SECS) as src, open(part, "wb") as dst:
++                while True:
++                    buf = src.read(1 << 20)
++                    if not buf:
++                        break
++                    dst.write(buf)
++        if n and part.stat().st_size != n:
++            log(f"  {f}: tamanho errado ({part.stat().st_size} de {n} bytes)")
++            return False
++        part.replace(out)
++    return model_ok(dest, sizes)
++
++
++def ensure_model(name: str):
++    """Baixa o modelo para ~/.ai-stream-clipper/models/<nome>; a transcrição carrega dali, sem rede."""
++    dest = model_dir(name)
++    if model_ok(dest):
++        return True, str(dest)
++    dest.mkdir(parents=True, exist_ok=True)
++    log(f"  downloading whisper model '{name}' (first time only)...")
++    try:
++        if _download_hf(name, dest) and model_ok(dest):
++            return True, str(dest)
++    except Exception as e:
++        log(f"  download normal falhou: {str(e)[:160]}")
++    try:
++        log("  plano B: download direto dos arquivos")
++        if _download_direct(name, dest):
++            return True, str(dest)
++    except Exception as e:
++        return False, f"download falhou: {str(e)[:100]}"
++    return False, "download falhou (confira a internet e rode o setup de novo; ele continua de onde parou)"
++
++
+ def install_ffmpeg():
+     if IS_WIN and which("winget"):
+         log("  installing ffmpeg with winget (Gyan.FFmpeg)...")
+@@ -102,6 +256,21 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
+     if sys.version_info < (3, 9):
+         rows.append(("python >= 3.9", False, sys.version.split()[0]))
+         ok_all = False
++    if is_store_python():
++        log("")
++        log("  Este é o Python da Microsoft Store. Ele instala os pacotes numa pasta do usuário que o")
++        log("  `python -I` (modo seguro que a skill usa) ignora: eles sempre apareceriam como faltando.")
++        if install and which("winget"):
++            install_python_org()
++            log("  Feche e abra o terminal (para o novo Python valer) e rode o setup de novo.")
++        else:
++            log("  Instale o Python em python.org marcando 'Add python.exe to PATH', feche e abra o")
++            log("  terminal e rode o setup de novo.")
++        log("")
++        log("  [--] Python (não pode ser o da Microsoft Store)  " + sys.executable)
++        log("")
++        log("NOT READY. Python do python.org necessário.")
++        return False
+     # python packages
+     missing = [pkg for mod, pkg in PIP.items() if not has_module(mod)]
+     if install:
+@@ -134,9 +303,20 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
+             subprocess.run(["brew", "install", "deno"])
+         js = which("deno") or which("node")
+     rows.append(("JS runtime for YouTube (deno/node)", bool(js), js or "install deno: https://deno.com"))
++    # leitura de áudio: PyAV compatível com o faster-whisper
++    decode_ok = False
++    if has_module("faster_whisper"):
++        decode_ok, why = audio_decode_ok()
++        if not decode_ok and install:
++            log("  faster-whisper não consegue ler áudio com este PyAV: instalando av<17")
++            pip_install(["av<17"])
++            decode_ok, why = audio_decode_ok()
++        rows.append(("audio decoding (PyAV)", decode_ok, "" if decode_ok else
++                     f"pip install \"av<17\" ({why[0][:80]})"))
++        ok_all &= decode_ok
+     # GPU whisper
+     device, compute, model = "cpu", "int8", "small"
+-    if not force_cpu and has_module("faster_whisper"):
++    if not force_cpu and decode_ok:
+         good, why = test_gpu_whisper()
+         if not good and install and IS_WIN and ("cublas" in why.lower() or "cudnn" in why.lower()):
+             pip_install(["nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.*"])
+@@ -145,23 +325,23 @@ def main(install: bool = True, force_cpu: bool = False, cookies_browser=None):
+             device, compute, model = "cuda", "float16", "large-v3-turbo"
+         rows.append(("NVIDIA GPU for transcription", good, "large-v3-turbo on GPU" if good else
+                      f"CPU mode, model 'small' ({why.strip().splitlines()[-1][:80] if why.strip() else 'no GPU'})"))
+-    # whisper model download
++    # whisper model download (pasta própria; a transcrição carrega dali sem rede)
++    model_paths = dict(load_config().get("model_paths") or {})
+     if has_module("faster_whisper") and install:
+-        try:
+-            from faster_whisper import download_model
+-            log(f"  downloading whisper model '{model}' (first time only)...")
+-            download_model(model)
+-            rows.append((f"whisper model {model}", True, ""))
+-        except Exception as e:
+-            rows.append((f"whisper model {model}", False, str(e)[:100]))
+-            ok_all = False
++        good, where = ensure_model(model)
++        rows.append((f"whisper model {model}", good, where))
++        if good:
++            model_paths[model] = where
++        ok_all &= good
++    elif model_ok(model_dir(model)):
++        model_paths[model] = str(model_dir(model))
+     rows.append(("face detector (YuNet)", YUNET.exists(), str(YUNET)))
+     fonts_ok = (FONTS / "Montserrat-Black.ttf").exists()
+     rows.append(("caption fonts (Cyrillic)", fonts_ok, ""))
+     ok_all &= YUNET.exists() and fonts_ok
+     cfg = load_config()
+     cfg.update({"device": device, "compute_type": compute, "model": model, "cpu_model": "small",
+-                "encoder": encoder or "libx264"})
++                "encoder": encoder or "libx264", "model_paths": model_paths})
+     if cookies_browser:
+         cfg["cookies_from_browser"] = cookies_browser
+     save_config(cfg)
+diff --git a/scripts/cl_transcribe.py b/scripts/cl_transcribe.py
+index 5a52c872c7c8352fbeccedf886593133a235a757..ee575b9d269e4b5589e01716fcf6505d1886aad7 100644
+--- a/scripts/cl_transcribe.py
++++ b/scripts/cl_transcribe.py
+@@ -78,11 +78,15 @@ def pick_device(force_cpu=False):
+ def load_model(device, compute, name):
+     add_cuda_dll_dirs()
+     from faster_whisper import WhisperModel
++    # o setup baixa o modelo para uma pasta própria: carregar dali não depende da rede
++    path = (load_config().get("model_paths") or {}).get(name)
++    if path and (Path(path) / "model.bin").is_file():
++        return WhisperModel(path, device=device, compute_type=compute)
+     return WhisperModel(name, device=device, compute_type=compute)
+ 
+ 
+-def detect_language(model, audio, sr=16000):
+-    """Vote over 5 windows from the middle of the stream (streams often start with music)."""
++def language_votes(model, audio, sr=16000) -> dict:
++    """Share of the vote of each language over 5 windows of 30 s (sums to 1; {} if no speech)."""
+     n = len(audio)
+     votes = {}
+     for frac in (0.2, 0.35, 0.5, 0.65, 0.8):
+@@ -97,9 +101,14 @@ def detect_language(model, audio, sr=16000):
+         except Exception:
+             continue
+         votes[lang] = votes.get(lang, 0) + prob
+-    if not votes:
+-        return "en"
+-    return max(votes, key=votes.get)
++    tot = sum(votes.values())
++    return {k: v / tot for k, v in votes.items()} if tot else {}
++
++
++def detect_language(model, audio, sr=16000):
++    """Vote over 5 windows from the middle of the stream (streams often start with music)."""
++    votes = language_votes(model, audio, sr)
++    return max(votes, key=votes.get) if votes else "en"
+ 
+ 
+ def is_hallucination(text: str, lang: str) -> bool:
+@@ -136,8 +145,16 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
+             raise
+     audio = read_wav(wav)
+     dur = len(audio) / 16000.0
+-    lang = language if language and language != "auto" else detect_language(model, audio)
+-    log(f"  whisper: language = {lang}")
++    # Detecta sempre pelo áudio (5 janelas de 30 s): com --lang forçado serve para pegar palpite errado.
++    votes = language_votes(model, audio)
++    top = max(votes, key=votes.get) if votes else None
++    forced = language if language and language != "auto" else None
++    lang = forced or top or "en"
++    seen = f"{top} {votes[top] * 100:.0f}%" if top else "sem fala clara"
++    log(f"  whisper: language = {lang} (detectado: {seen})")
++    if forced and top and top != forced and votes[top] >= 0.6 and votes.get(forced, 0) < 0.25:
++        log(f"  WARN: o áudio parece ser '{top}' ({votes[top] * 100:.0f}%), não '{forced}'. "
++            f"Se o vídeo é mesmo em {top}, rode o prepare de novo com --lang {top}.")
+     batched = BatchedInferencePipeline(model=model)
+     bs = 16 if device == "cuda" else 4
+     segments, info = batched.transcribe(audio, language=lang, word_timestamps=True, batch_size=bs,
+@@ -177,7 +194,8 @@ def _transcribe(job: Path, wav: Path, language=None, force_cpu=False, model_name
+     write_json(tdir / "words.json", words)
+     write_json(tdir / "segments.json", segs)
+     write_text(tdir / "transcript.txt", "\n".join(f"[{fmt_ts(s['s'])}] {s['text']}" for s in segs))
+-    res = {"language": lang, "device": device, "model": name, "seconds": round(t(), 1),
++    res = {"language": lang, "detected": {k: round(v, 3) for k, v in sorted(votes.items(), key=lambda x: -x[1])[:3]},
++           "device": device, "model": name, "seconds": round(t(), 1),
+            "duration": dur, "words": len(words), "segments": len(segs)}
+     write_json(tdir / "info.json", res)
+     log(f"  whisper: done, {len(words)} words in {t():.0f} s")
+diff --git a/scripts/cl_translate.py b/scripts/cl_translate.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7cd4f084d4675aa07fd63b6efb17ca77746c6324
+--- /dev/null
++++ b/scripts/cl_translate.py
+@@ -0,0 +1,134 @@
++"""Translated captions: an English video with pt-BR captions, or a Brazilian video with English captions.
++
++Flow:
++  1. `clipper.py translate JOB` splits the speech of every checked pick into short phrases with exact
++     times and writes `translate.md` (to read) + `translation.todo.json` (template).
++  2. Claude writes `translation.json`: one translated line per phrase, same order and count.
++  3. `render` sees translation.json and burns the translated captions: each phrase is on screen exactly
++     while the original phrase is spoken; its words light up spread over that time (by length).
++"""
++from __future__ import annotations
++
++import re
++from pathlib import Path
++
++from cl_common import fmt_ts, read_json, write_json, write_text
++
++END = (".", "!", "?", "…")
++GAP_SPLIT = 0.7      # silence that always starts a new phrase (s)
++MAX_WORDS = 14
++MAX_SECS = 5.0
++LANG_NAMES = {"pt": "português do Brasil (pt-BR)", "en": "inglês (English)", "es": "espanhol", "ru": "russo"}
++# Como traduzir, por idioma de destino (vai no topo do translate.md).
++STYLE = {
++    "pt": ("Tradução natural e curta, como legenda de canal de cortes brasileiro (\"Puta merda!\", \"Bora, "
++           "porra!\", \"Esse jogo é de outra geração\"): adapte gíria e palavrão, não traduza palavra por palavra."),
++    "en": ("Write natural spoken English, the way a US clip channel captions a stream (\"Bro, no way!\", "
++           "\"Let's go!\", \"This game is next gen\"): adapt Brazilian slang and swearing (mano = bro, porra = "
++           "damn / f*ck, caralho = holy sh*t, tá ligado = you know), never word for word."),
++}
++
++
++def clip_words(words, a, b):
++    return [w for w in words if w["e"] > a and w["s"] < b]
++
++
++def phrases(ws):
++    """Split the clip's words into short phrases: sentence end, long pause, or too long."""
++    out, cur = [], []
++    for w in ws:
++        if cur:
++            prev = cur[-1]
++            gap = w["s"] - prev["e"]
++            pw = prev["w"].rstrip()
++            span = w["e"] - cur[0]["s"]
++            if (pw.endswith(END) or gap > GAP_SPLIT or len(cur) >= MAX_WORDS or span > MAX_SECS
++                    or (pw.endswith(",") and len(cur) >= 6)):
++                out.append(cur)
++                cur = []
++        cur.append(w)
++    if cur:
++        out.append(cur)
++    return [{"s": round(p[0]["s"], 2), "e": round(p[-1]["e"], 2), "src": " ".join(x["w"].strip() for x in p)}
++            for p in out]
++
++
++def _key(p):
++    return f"{p['start']:.2f}-{p['end']:.2f}"
++
++
++def prepare(job: Path, to: str = "pt") -> dict:
++    meta = read_json(job / "job.json") or {}
++    chk = read_json(job / "moments.checked.json")
++    if not chk:
++        raise SystemExit("Run `check` first: moments.checked.json is missing")
++    words = read_json(job / "transcript" / "words.json", [])
++    src_lang = meta.get("language", "en")
++    todo = {"from": src_lang, "to": to, "clips": {}}
++    md = [f"# Tradução das legendas: {meta.get('title', '')}",
++          f"De {LANG_NAMES.get(src_lang, src_lang)} para {LANG_NAMES.get(to, to)}.", "",
++          "Escreva `translation.json` com o mesmo formato de `translation.todo.json`: em cada clipe, "
++          "`lines` tem exatamente uma linha traduzida por frase, na mesma ordem (pode ser \"\" para "
++          "barulho / frase sem sentido).", "",
++          STYLE.get(to, STYLE["pt"]) + " Mantenha nomes próprios. Cada linha só aparece enquanto a frase "
++          "original é falada: frase de 1 s pede 2-4 palavras.", ""]
++    for p in sorted(chk["picks"], key=lambda q: q["order"]):
++        ph = phrases(clip_words(words, p["start"], p["end"]))
++        todo["clips"][str(p["order"])] = {"key": _key(p), "src": [x["src"] for x in ph], "lines": []}
++        md += [f"## Clipe {p['order']}: {fmt_ts(p['start'])} - {fmt_ts(p['end'])} ({len(ph)} frases)", ""]
++        md += [f"{i}. [{x['s'] - p['start']:.1f}-{x['e'] - p['start']:.1f} s] {x['src']}" for i, x in enumerate(ph, 1)]
++        md.append("")
++    write_json(job / "translation.todo.json", todo)
++    write_text(job / "translate.md", "\n".join(md) + "\n")
++    return todo
++
++
++def load(job: Path, picks) -> dict:
++    """translation.json validated against the current checked picks -> {order: [lines]}.
++    Raises SystemExit if it is out of date (cuts changed after translating)."""
++    tr = read_json(job / "translation.json")
++    if not tr:
++        return {}
++    words = read_json(job / "transcript" / "words.json", [])
++    clips = tr.get("clips") or {}
++    out, errs = {}, []
++    for p in picks:
++        c = clips.get(str(p["order"]))
++        if c is None:
++            errs.append(f"clipe {p['order']}: não está em translation.json")
++            continue
++        n = len(phrases(clip_words(words, p["start"], p["end"])))
++        lines = c.get("lines") or []
++        if c.get("key") and c["key"] != _key(p):
++            errs.append(f"clipe {p['order']}: o corte mudou depois da tradução (rode translate de novo)")
++        elif len(lines) != n:
++            errs.append(f"clipe {p['order']}: {len(lines)} linhas traduzidas para {n} frases")
++        else:
++            out[p["order"]] = [str(x) for x in lines]
++    if errs:
++        raise SystemExit("translation.json inválido: " + "; ".join(errs))
++    return {"to": tr.get("to", "pt"), "lines": out}
++
++
++def translated_words(ws, lines):
++    """Synthetic word list in the target language with times: each phrase's translated words are
++    spread over the original phrase's span, weighted by length (longer words stay lit longer)."""
++    out = []
++    phs = phrases(ws)
++    for k, (ph, line) in enumerate(zip(phs, lines)):
++        toks = [t for t in re.split(r"\s+", line.strip()) if t]
++        if not toks:
++            continue
++        s, e = ph["s"], ph["e"]
++        span = max(e - s, 0.25 * len(toks))   # a short "Wow." translated to more words needs room
++        if k + 1 < len(phs):
++            span = min(span, max(e - s, phs[k + 1]["s"] - 0.05 - s))
++        span = max(span, 0.1)
++        weights = [len(re.sub(r"\W", "", t)) + 2 for t in toks]
++        tot = float(sum(weights))
++        t = s
++        for tok, wgt in zip(toks, weights):
++            d = span * wgt / tot
++            out.append({"s": round(t, 3), "e": round(t + d - 0.02, 3), "w": tok})
++            t += d
++    return out
 diff --git a/scripts/clipper.py b/scripts/clipper.py
-index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f61f5b65f 100644
+index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..ca7a402384fe6b294c8644231525a1ba1ddbf12c 100644
 --- a/scripts/clipper.py
 +++ b/scripts/clipper.py
-@@ -2,9 +2,10 @@
+@@ -2,10 +2,12 @@
  
  Commands (run with: python -I scripts/clipper.py <command> ...):
    setup   [--no-install] [--cpu] [--cookies-from-browser firefox]
@@ -1044,9 +1528,11 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
 +  translate JOB [--to pt]   (foreign stream: phrases for Claude to translate -> translation.json)
 +  render  JOB [--only 1,3] [--original-captions]
    report  JOB
++  brand   [--handle @perfil] [--frame on|off]   (moldura neon + arroba nos vídeos)
    sheet   VIDEO.mp4
  SOURCE = YouTube / Twitch / Kick VOD link or a local video file.
-@@ -21,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
+ """
+@@ -21,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
  from cl_common import (DEFAULT_OUT, Timer, fmt_dur, fmt_ts, log, read_json, slug, utf8_console,  # noqa: E402
                         write_json)
  
@@ -1056,7 +1542,7 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
  
  
  def job_dir_for(meta: dict, out: Path) -> Path:
-@@ -97,7 +99,7 @@ def cmd_check(args):
+@@ -97,7 +100,7 @@ def cmd_check(args):
      import cl_moments
      job = Path(args.job).expanduser().resolve()
      meta = read_json(job / "job.json") or {}
@@ -1065,7 +1551,7 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
      for e in errors:
          log("ERROR: " + e)
      for w in warns:
-@@ -115,6 +117,29 @@ def cmd_check(args):
+@@ -115,6 +118,29 @@ def cmd_check(args):
      return 0 if not errors else 2
  
  
@@ -1095,7 +1581,7 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
  def cmd_render(args):
      import cl_render
      only = [int(x) for x in args.only.split(",")] if args.only else None
-@@ -122,7 +147,9 @@ def cmd_render(args):
+@@ -122,7 +148,9 @@ def cmd_render(args):
      log(f"== render: {job.name}")
      try:
          meta = cl_render.render_job(job, args.cookies_from_browser, args.cookies, only, args.facecam,
@@ -1106,7 +1592,35 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
      except SystemExit as e:
          log(f"  FAILED: {e}")
          return 1
-@@ -168,8 +195,8 @@ def main():
+@@ -149,6 +177,27 @@ def cmd_sheet(args):
+     return 0
+ 
+ 
++def cmd_brand(args):
++    """Identidade visual dos renders: moldura neon roxa + arroba do perfil (config.json, vale para todo render)."""
++    from cl_captions import clean_handle
++    from cl_common import load_config, save_config
++    cfg = load_config()
++    brand = {"frame": True, "handle": "", **(cfg.get("brand") or {})}
++    if args.handle is not None:
++        h = clean_handle(args.handle)
++        if args.handle.strip() and not h:
++            log("  FAILED: arroba inválida (use letras, números, ponto e _, até 30)")
++            return 1
++        brand["handle"] = h
++    if args.frame is not None:
++        brand["frame"] = args.frame == "on"
++    if args.handle is not None or args.frame is not None:
++        cfg["brand"] = brand
++        save_config(cfg)
++    log(f"brand: moldura {'on' if brand['frame'] else 'off'}, arroba {brand['handle'] or '(nenhuma)'}")
++    return 0
++
++
+ def main():
+     utf8_console()
+     ap = argparse.ArgumentParser(prog="clipper", description=__doc__,
+@@ -168,8 +217,8 @@ def main():
      p = sub.add_parser("prepare")
      p.add_argument("source", help="one stream link or local video file")
      p.add_argument("--out", default=str(DEFAULT_OUT))
@@ -1117,7 +1631,7 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
                     help="clips per stream (1-3)")
      p.add_argument("--chunk-minutes", type=int, default=10)
      p.add_argument("--read-all", action="store_true", help="mark every chunk READ FIRST (thorough, more tokens)")
-@@ -178,7 +205,11 @@ def main():
+@@ -178,7 +227,11 @@ def main():
  
      p = sub.add_parser("check")
      p.add_argument("job")
@@ -1130,7 +1644,7 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
  
      p = sub.add_parser("render")
      p.add_argument("job")
-@@ -186,6 +217,17 @@ def main():
+@@ -186,11 +239,26 @@ def main():
      p.add_argument("--facecam", default=None,
                     help="manual webcam box x:y:w:h in source pixels (see layout_debug.jpg) if detection is wrong; full:X = one 9:16 crop centred on source x (IRL, wrong person)")
      p.add_argument("--no-censor", action="store_true", help="do not mask swear words in captions and hook")
@@ -1148,15 +1662,27 @@ index 8474dfd2a4d9dda6067e0b3c85dd1e32252d25b7..0fd5340b85d6ae4e8e756aa4303f281f
      cookies(p)
  
      p = sub.add_parser("report")
-@@ -198,7 +240,7 @@ def main():
+     p.add_argument("job")
+ 
++    p = sub.add_parser("brand")
++    p.add_argument("--handle", default=None, help='arroba do perfil no canto do vídeo, ex. @perfil ("" tira)')
++    p.add_argument("--frame", default=None, choices=["on", "off"], help="moldura neon roxa no contorno do vídeo")
++
+     p = sub.add_parser("sheet")
+     p.add_argument("video")
+ 
+@@ -198,8 +266,9 @@ def main():
      if args.cmd == "setup":
          import cl_setup
          return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
 -    return {"prepare": cmd_prepare, "check": cmd_check, "render": cmd_render,
+-            "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
 +    return {"prepare": cmd_prepare, "check": cmd_check, "translate": cmd_translate, "render": cmd_render,
-             "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
++            "report": cmd_report, "sheet": cmd_sheet,
++            "brand": cmd_brand}[args.cmd](args)
  
  
+ if __name__ == "__main__":
 diff --git a/scripts/strings.json b/scripts/strings.json
 index e9699d3be8fed12019d83bbb3dfcb38e8b9327cd..e7de7b7f4e0a34080eb8e758e087df340daa5a8f 100644
 --- a/scripts/strings.json

@@ -61,6 +61,9 @@ Na caixa do Claude, digite **`configura o clipper`** e espere de 5 a 15 min.
 Quando ele pedir permissão, escolha **Yes**.
 
 Deve terminar com **READY**. Se aparecer **NOT READY**, digite: `conserta o que faltou e roda de novo`.
+O setup resolve sozinho três problemas comuns: Python da Microsoft Store (instala o do python.org e pede
+para abrir o terminal de novo), versão do PyAV que quebra a transcrição, e download do modelo que trava
+(tenta de novo por outro caminho; se a internet cair, rodar de novo continua de onde parou).
 
 ---
 
@@ -78,16 +81,23 @@ Depois digite um destes comandos na caixa do Claude:
 | Um vídeo do YouTube (qualquer duração) | `/cortes-youtube LINK` |
 | Um vídeo, com menos clipes (1 a 5) | `/cortes-youtube LINK --top 3` |
 | Um vídeo, já dizendo o idioma da legenda | `/cortes-youtube LINK --legenda en` (ou `pt`) |
-| Uma live que já terminou | `/clipar-gta-br LINK` |
+| Uma live que já terminou (brasileira ou gringa) | `/clipar-gta-br LINK` |
+| Uma live, já dizendo o idioma da legenda | `/clipar-gta-br LINK --legenda en` (ou `pt`) |
 | As lives novas dos streamers da lista | `/clipar-gta-br` |
-| Uma live gringa (inglês, espanhol...) com legenda em português | `corta essa live LINK com legenda em português` |
 
-**Idioma da legenda:** a cada vídeo do YouTube o Claude pergunta se a legenda sai em **português** ou em
-**inglês**, e traduz nos dois sentidos: vídeo gringo com legenda em português, ou vídeo brasileiro com
+**Idioma da legenda:** a cada vídeo ou live o Claude pergunta se a legenda sai em **português** ou em
+**inglês**, e traduz nos dois sentidos: vídeo/live gringo com legenda em português, ou brasileiro com
 legenda em inglês. Hook, título e post saem no mesmo idioma da legenda. O Claude traduz só as frases dos
-clipes escolhidos, no mesmo estilo palavra por palavra. Sem ninguém para responder (automático, GTA Clipper
-Studio) a legenda sai em português; no automático, cada canal pode ter `"legenda": "en"` em `canais.json`.
-**Lives gringas** saem com legenda em português. Já tinha instalado a skill de lives antes? Rode o passo 5 de novo.
+clipes escolhidos, no mesmo estilo palavra por palavra. O idioma falado no vídeo ele descobre sozinho (e
+confere pelo áudio). Sem ninguém para responder (automático, GTA Clipper Studio) a legenda sai em português.
+No automático, cada canal pode ter `"legenda": "en"` em `canais.json`, e cada streamer `"idioma": "en"`
+(gringo) e `"legenda"` em `streamers.json`. Já tinha instalado a skill de lives antes? Rode o passo 5 de novo.
+
+**Visual dos clipes:** zoom automático nos trechos em que o streamer fala mais alto ou grita, legenda com
+contorno grosso e sombra, e identidade visual: moldura neon roxa fina no contorno do vídeo e a arroba do seu
+perfil no canto superior direito. Para pôr a sua arroba, diga ao Claude `põe a arroba @seuperfil nos cortes`
+(ou rode `python -I .claude/skills/cortes-youtube/scripts/clipper.py brand --handle @seuperfil`). Vale para os
+cortes do YouTube e das lives. Sem arroba configurada, sai só a moldura.
 
 **Visual dos clipes:** zoom automático nos trechos em que o streamer fala mais alto ou grita, legenda com
 contorno grosso e sombra, e identidade visual (moldura neon roxa fina no contorno do vídeo + arroba do perfil no

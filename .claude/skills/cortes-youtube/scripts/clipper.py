@@ -7,6 +7,7 @@ Commands (run with: python -I scripts/clipper.py <command> ...):
   translate JOB [--to pt]   (vídeo estrangeiro: frases para o Claude traduzir -> translation.json)
   render  JOB [--only 1,3] [--original-captions]
   report  JOB
+  brand   [--handle @perfil] [--frame on|off]   (moldura neon + arroba nos vídeos)
   sheet   VIDEO.mp4
 SOURCE = YouTube / Twitch / Kick VOD link or a local video file.
 """
@@ -183,6 +184,27 @@ def cmd_sheet(args):
     return 0
 
 
+def cmd_brand(args):
+    """Identidade visual dos renders: moldura neon roxa + arroba do perfil (config.json, vale para todo render)."""
+    from cl_captions import clean_handle
+    from cl_common import load_config, save_config
+    cfg = load_config()
+    brand = {"frame": True, "handle": "", **(cfg.get("brand") or {})}
+    if args.handle is not None:
+        h = clean_handle(args.handle)
+        if args.handle.strip() and not h:
+            log("  FAILED: arroba inválida (use letras, números, ponto e _, até 30)")
+            return 1
+        brand["handle"] = h
+    if args.frame is not None:
+        brand["frame"] = args.frame == "on"
+    if args.handle is not None or args.frame is not None:
+        cfg["brand"] = brand
+        save_config(cfg)
+    log(f"brand: moldura {'on' if brand['frame'] else 'off'}, arroba {brand['handle'] or '(nenhuma)'}")
+    return 0
+
+
 def main():
     utf8_console()
     ap = argparse.ArgumentParser(prog="clipper", description=__doc__,
@@ -243,6 +265,10 @@ def main():
     p = sub.add_parser("report")
     p.add_argument("job")
 
+    p = sub.add_parser("brand")
+    p.add_argument("--handle", default=None, help='arroba do perfil no canto do vídeo, ex. @perfil ("" tira)')
+    p.add_argument("--frame", default=None, choices=["on", "off"], help="moldura neon roxa no contorno do vídeo")
+
     p = sub.add_parser("sheet")
     p.add_argument("video")
 
@@ -251,7 +277,8 @@ def main():
         import cl_setup
         return 0 if cl_setup.main(not args.no_install, args.cpu, args.cookies_from_browser) else 1
     return {"prepare": cmd_prepare, "check": cmd_check, "translate": cmd_translate, "render": cmd_render,
-            "report": cmd_report, "sheet": cmd_sheet}[args.cmd](args)
+            "report": cmd_report, "sheet": cmd_sheet,
+            "brand": cmd_brand}[args.cmd](args)
 
 
 if __name__ == "__main__":

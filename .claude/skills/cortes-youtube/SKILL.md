@@ -188,6 +188,8 @@ forte, `--no-zoom` desliga) e identidade visual com moldura neon roxa e arroba d
 Cada clipe ganha também uma capa `<clipe>_capa.jpg` (1080x1920): o quadro mais forte do clipe editado (zoom, cor,
 contraste, vinheta), outros dois momentos em cartões com borda neon, o hook em letras grandes e a marca
 (`--no-cover` desliga). Só use `--no-zoom` / `--no-brand` / `--no-cover` quando o pedido disser.
+Para trocar a arroba ou a moldura (quando o usuário pedir): `clipper.py brand --handle @perfil`
+(`--handle ""` tira a arroba; `--frame off` tira a moldura). Sem arroba configurada, sai só a moldura.
 
 Layouts: sem rosto (o mais comum em gameplay editado) = `gameplay`, um recorte 9:16 seguindo a ação;
 com webcam no canto = `facecam`, rosto em cima e gameplay embaixo. Webcam errada: `--facecam x:y:w:h`

@@ -281,7 +281,7 @@ class Processing(Page):
             r.time.setText("")
             r.t0 = None
             r.set_state("pending")
-            r.setVisible(True)
+            r.setVisible(True)   # lives também traduzem a legenda (live gringa ou legenda em inglês)
         self.cur = -1
         self.progress_val = 0
         self.bar.state = "run"
