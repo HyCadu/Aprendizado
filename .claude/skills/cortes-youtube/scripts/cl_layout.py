@@ -25,6 +25,11 @@ LIVE_MIN = 2.2        # min face pixel change between samples (static pictures a
 # no mouth) and the face geometry stays the same (no head turns). Live people: 13+ and 0.2+.
 PIC_RES = 8.0         # max aligned-face change (0-255) of a picture
 PIC_GEO = 0.06        # max spread of landmark geometry (share of eye distance) of a picture
+# ...but only a face that MOVES on screen can be a picture filmed by a moving camera. A webcam face stays put
+# (median shift between samples 0.01-0.03 face widths): a calm streamer reading or focused on the game also
+# barely changes once aligned and was taken for a picture, so the clip lost its cam. A still picture that does
+# not move (thumbnail, paused frame) has no pixel change at all and is caught by LIVE_MIN.
+PIC_MOVE = 0.05       # min median shift of the face centre (face widths per sample) for the picture test
 # two or more people in one camera picture (IRL, interview): a camera shot, not a webcam
 PEOPLE_LIVE = 6.0     # min _liveness of a person in a camera shot (people: 10+, game / trailer faces: ~2-4)
 _CANON = np.float32([[38.3, 51.7], [73.5, 51.5], [56.0, 71.7], [41.5, 92.4], [70.7, 92.2]]) * (64 / 112)
@@ -78,6 +83,11 @@ def _picture_like(items, frames) -> bool:
     its = sorted((f for f in items if len(f) >= 16), key=lambda f: f[0])
     if len(its) < 4:
         return False
+    fw = float(np.median([f[3] for f in its])) + 1e-6
+    shift = [np.hypot((b[1] + b[3] / 2) - (a[1] + a[3] / 2), (b[2] + b[4] / 2) - (a[2] + a[4] / 2)) / fw
+             for a, b in zip(its, its[1:]) if b[0] - a[0] <= 2]
+    if not shift or float(np.median(shift)) < PIC_MOVE:
+        return False   # stays put on screen: a webcam, not a picture filmed by a moving camera
     crops, geo = [], []
     for f in its:
         lm = np.float32(f[6:16]).reshape(5, 2)
@@ -96,12 +106,12 @@ def _picture_like(items, frames) -> bool:
     return float(np.median(res)) < PIC_RES and float(np.array(geo).std(axis=0).max()) < PIC_GEO
 
 
-def _liveness(items, frames) -> float:
+def _liveness(items, frames, picture_test: bool = True) -> float:
     """Median pixel change of the face between samples. A real webcam face moves and blinks;
     a face on a static picture (thumbnail, poster, paused frame) does not. A picture filmed
     by a moving camera moves as a whole: caught by _picture_like."""
     import cv2
-    if _picture_like(items, frames):
+    if picture_test and _picture_like(items, frames):
         return 0.0
     crops = []
     for f in sorted(items, key=lambda f: f[0]):
@@ -128,7 +138,7 @@ def face_clusters(faces, W):
     return clusters
 
 
-def stable_face(faces, n_frames, W, frames=None, min_presence=0.35):
+def stable_face(faces, n_frames, W, frames=None, min_presence=0.35, picture_test=True):
     """Cluster faces by position; the facecam is the live face that stays put."""
     clusters = []
     for f in sorted(faces, key=lambda f: -f[3] * f[4]):
@@ -144,7 +154,7 @@ def stable_face(faces, n_frames, W, frames=None, min_presence=0.35):
     for c in clusters:
         cnt = len(c["frames"])
         if cnt >= max(3, int(min_presence * n_frames)):
-            if frames is not None and _liveness(c["items"], frames) < LIVE_MIN:
+            if frames is not None and _liveness(c["items"], frames, picture_test) < LIVE_MIN:
                 continue
             key = (cnt, c["w"])
             if best is None or key > best[0]:
@@ -426,12 +436,12 @@ def face_crop(face, bounds, overlays, aspect, aw, ah, x_range=None, activity=Non
     return cands[-1][1]
 
 
-def plan_frames(frames, faces, W, H, crowd=False) -> dict:
+def plan_frames(frames, faces, W, H, crowd=False, picture_test=True) -> dict:
     """Layout for one stretch of video where the stream layout does not change.
     crowd: two or more live people of similar size are in the picture (a camera shot, not a webcam)."""
     ah, aw = frames[0].shape[:2]
     k = W / aw  # analysis -> source scale
-    face, presence = stable_face(faces, len(frames), aw, frames, min_presence=0.2)
+    face, presence = stable_face(faces, len(frames), aw, frames, min_presence=0.2, picture_test=picture_test)
     cb = content_box(frames)
     lay = {"src_w": W, "src_h": H, "face_presence": round(presence, 2), "frames_checked": len(frames)}
     cam_rect = None
@@ -584,9 +594,12 @@ def _people_in(cams, i0, i1, ref_w):
     return people
 
 
-def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None) -> dict:
+def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None, trust_prior=False) -> dict:
     """Layout for a clip. If the stream layout changes inside the clip (scene switch: game ->
-    just chatting, cam moved), the clip is split into segments, each with its own layout."""
+    just chatting, cam moved), the clip is split into segments, each with its own layout.
+    prior: (x, y) share of the frame where the streamer's cam sits in the other clips of this video.
+    trust_prior: a face that stays at the prior is taken as the cam without the picture test (it only has to
+    be alive: some pixel change); used to re-check a clip that came out without a cam."""
     fps = 2.0
     frames, times, W, H = grab_frames(video, t0, dur, fps)
     if not frames:
@@ -597,15 +610,16 @@ def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None
     # streamer faces = clusters that stay in place for >= 25 % of the clip and are alive
     # (game characters and pictures on screen do not pass both tests)
     cams = []
-    for c in face_clusters(faces, aw):
-        if len(c["frames"]) >= max(4, int(0.25 * n)):
-            c["live"] = _liveness(c["items"], frames)
-            if c["live"] >= LIVE_MIN:
-                cams.append(c)
     def near_prior(c):
         if not prior:
             return 0
         return int(abs(c["cx"] / aw - prior[0]) < 0.12 and abs(c["cy"] / frames[0].shape[0] - prior[1]) < 0.15)
+    for c in face_clusters(faces, aw):
+        if len(c["frames"]) >= max(4, int(0.25 * n)):
+            c["trusted"] = bool(trust_prior and near_prior(c))
+            c["live"] = _liveness(c["items"], frames, picture_test=not c["trusted"])
+            if c["live"] >= LIVE_MIN:
+                cams.append(c)
     cams.sort(key=lambda c: (-near_prior(c), -len(c["frames"])))
     labels = []
     for i in range(n):
@@ -677,7 +691,8 @@ def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None
         fc = [(f[0] - sg["i0"],) + tuple(f[1:]) for f in own if sg["i0"] <= f[0] < sg["i1"]]
         # live people of about the same size in the picture: a camera shot (IRL, interview, podcast)
         crowd = len(_people_in(cams, sg["i0"], sg["i1"], float(np.median([f[3] for f in fc])))) if fc else 0
-        lay = plan_frames(fr, fc, W, H, crowd >= 2)
+        trusted = sg["label"] is not None and cams[sg["label"]].get("trusted", False)
+        lay = plan_frames(fr, fc, W, H, crowd >= 2, picture_test=not trusted)
         s0 = 0.0 if j == 0 else _refine_cut(video, t0 + sg["i0"] / fps - 0.25) - t0
         lay["t0"] = round(max(0.0, s0), 3)
         out.append(lay)

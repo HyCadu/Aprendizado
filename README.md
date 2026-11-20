@@ -105,6 +105,10 @@ canto superior direito). A arroba se digita direto em **Novo corte** (campo "Arr
 **Configurações > Identidade visual**, ou em `brand` no `~/.ai-stream-clipper/config.json`); a moldura fica em
 Configurações e o zoom tem uma caixa em **Novo corte**.
 
+**Legenda abaixo da cam:** quando o clipe tem a cam do streamer em cima, a legenda fica logo abaixo dela
+(uns 3 px da divisão); sem cam, continua embaixo. Se um clipe não achar a cam mas os outros do mesmo vídeo
+acharam, o render procura de novo naquele lugar (streamer parado e cam pequena eram confundidos com foto).
+
 **Capa de cada clipe:** junto de cada `.mp4` sai `<clipe>_capa.jpg` (1080x1920) com o momento mais forte do clipe
 de fundo (zoom, cor, contraste e vinheta), outros dois momentos em cartões inclinados com borda neon, o título em
 letras grandes e a arroba. Dá para desligar em **Novo corte** ou com `--no-cover` no render. Na **Biblioteca** a

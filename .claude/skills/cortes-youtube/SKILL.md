@@ -185,6 +185,7 @@ atrasa; use `=` com negativo, ex. `--caption-lead=-0.1`).
 Visual do render (padrão, sem precisar pedir): zoom de 12% nos trechos de narração mais forte (`--zoom 1.2` mais
 forte, `--no-zoom` desliga) e identidade visual com moldura neon roxa e arroba do perfil, lidas de `brand` em
 `~/.ai-stream-clipper/config.json` (`{"frame": true, "handle": "@perfil"}`; `--no-brand` desliga só neste render).
+Com cam (layout `facecam`) a legenda fica logo abaixo da cam (3 px da divisão); sem cam, embaixo.
 Cada clipe ganha também uma capa `<clipe>_capa.jpg` (1080x1920): o quadro mais forte do clipe editado (zoom, cor,
 contraste, vinheta), outros dois momentos em cartões com borda neon, o hook em letras grandes e a marca
 (`--no-cover` desliga). Só use `--no-zoom` / `--no-brand` / `--no-cover` quando o pedido disser.

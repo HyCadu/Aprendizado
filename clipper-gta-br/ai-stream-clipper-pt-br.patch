@@ -1,5 +1,5 @@
 diff --git a/SKILL.md b/SKILL.md
-index c568482dc74f22a144792daa987129ab87a84acb..55d239efa19fe72b09d1476baa35c6d742c42163 100644
+index c568482dc74f22a144792daa987129ab87a84acb..af74caef063c272dc959c2c92a78851ce2e1ec4f 100644
 --- a/SKILL.md
 +++ b/SKILL.md
 @@ -1,11 +1,11 @@
@@ -102,7 +102,7 @@ index c568482dc74f22a144792daa987129ab87a84acb..55d239efa19fe72b09d1476baa35c6d7
  
  ## 4. Check
  
-@@ -119,22 +143,64 @@ Fix every ERROR. For each WARN either fix it or be sure it is fine, then run che
+@@ -119,22 +143,65 @@ Fix every ERROR. For each WARN either fix it or be sure it is fine, then run che
  Read `<job>/moments.check.md`: the exact first and last words of each clip with times, and the words just
  outside the cut. The first words must hook, the last words must be the payoff.
  
@@ -154,7 +154,8 @@ index c568482dc74f22a144792daa987129ab87a84acb..55d239efa19fe72b09d1476baa35c6d7
 +Render look (default, nothing to ask): 12% punch-in zoom on the loudest / fastest narration (`--zoom 1.2` stronger,
 +`--no-zoom` off) and a brand overlay - thin purple neon frame + profile handle - read from `brand` in
 +`~/.ai-stream-clipper/config.json` (`{"frame": true, "handle": "@profile"}`; `--no-brand` turns it off for one
-+render). Every clip also gets a cover `<clip>_capa.jpg` (1080x1920: the strongest frame, color-graded, two other
++render). With a cam (`facecam` layout) the captions sit right under the cam (3 px below the seam); without
++one, at the bottom. Every clip also gets a cover `<clip>_capa.jpg` (1080x1920: the strongest frame, color-graded, two other
 +moments as neon-bordered cards, the hook in big letters and the brand; `--no-cover` turns it off).
 +Only pass `--no-zoom` / `--no-brand` / `--no-cover` when the request says so. To change the handle or the frame (only
 +when the user asks): `clipper.py brand --handle @profile` (`--handle ""` removes it, `--frame off` removes the frame).
@@ -171,10 +172,10 @@ index c568482dc74f22a144792daa987129ab87a84acb..55d239efa19fe72b09d1476baa35c6d7
  Open `layout_debug.jpg`, find the webcam box in source pixels and re-render that clip:
  `render <job> --only N --facecam x:y:w:h`. Then give the user the mp4 paths, post.md, report.md and one
 diff --git a/scripts/cl_captions.py b/scripts/cl_captions.py
-index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e5b7420ec 100644
+index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..3ee3b7f766c1b09a56e2a774e85cbddd9bc2bf49 100644
 --- a/scripts/cl_captions.py
 +++ b/scripts/cl_captions.py
-@@ -16,6 +16,9 @@ HOOK_SIZE = 76
+@@ -16,7 +16,14 @@ HOOK_SIZE = 76
  HOOK_SIZES = (80, 76, 72, 68)
  HOOK_MAX_W = 940
  MAX_W = 900            # max caption line width, px (frame is 1080)
@@ -182,9 +183,67 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
 +CAP_SHADOW = 5         # deslocamento da sombra, px
 +CAP_GLOW = 20          # raio do halo escuro desfocado, px
  HIGHLIGHT = "&H0000E6FF&"   # #FFE600 in ASS BGR
++CAP_Y_BOTTOM = 1265    # base da legenda sem cam (zona segura: acima de ~1300 px)
++CAM_H = 720            # altura do painel da cam no modo facecam (= cl_layout.TOP_H)
++CAM_GAP = 3            # legenda logo abaixo da cam: topo das letras (palavra destacada) a 3 px da divisão
++HL_SCALE = 1.08        # a palavra destacada fica 8% maior
  WHITE = "&H00FFFFFF&"
  EMOJI = re.compile("[\U0001F000-\U0001FFFF☀-➿️‍]")
-@@ -62,18 +65,21 @@ def esc(t: str) -> str:
+ STRIP = re.compile(r"^[^\w$%#@&+]+|[^\w%!?$]+$", re.UNICODE)
+@@ -48,6 +55,52 @@ def text_width(text: str, size: float, path=CAP_FONT_FILE) -> float:
+     return total * em / upm
+ 
+ 
++def _cap_metrics():
++    """(altura das maiúsculas, descendente) da fonte da legenda, em fração do tamanho do libass
++    (o libass usa tamanho = winAscent + winDescent)."""
++    try:
++        from fontTools.ttLib import TTFont
++        f = TTFont(str(CAP_FONT_FILE))
++        os2, upm = f["OS/2"], f["head"].unitsPerEm
++        cell = (os2.usWinAscent + os2.usWinDescent) / upm
++        return os2.sCapHeight / upm / cell, os2.usWinDescent / upm / cell
++    except Exception:
++        return 0.448, 0.29   # Montserrat Black
++
++
++def caption_bottom(mode: str, scale: float = 1.0) -> float:
++    """y do an2 (base da caixa da linha) da legenda. Com cam (facecam): logo abaixo do painel da cam, com o
++    topo das letras da palavra destacada a CAM_GAP px da divisão. Sem cam: embaixo, como sempre."""
++    if mode != "facecam":
++        return CAP_Y_BOTTOM
++    cap, desc = _cap_metrics()
++    size = CAP_SIZE * scale * HL_SCALE
++    return CAM_H + CAM_GAP + cap * size + desc * size
++
++
++def caption_band(mode: str) -> tuple:
++    """Faixa (y0, y1) do vídeo onde a legenda aparece (para a conferência de sincronia e a capa)."""
++    if mode == "facecam":
++        return CAM_H - 8, CAM_H + 152
++    return CAP_Y_BOTTOM - 125, CAP_Y_BOTTOM + 35
++
++
++def mode_at(segments, t: float) -> str:
++    if isinstance(segments, str):
++        return segments
++    for sg in segments:
++        if sg.get("t0", 0.0) <= t < sg.get("t1", 1e9):
++            return sg["mode"]
++    return segments[-1]["mode"]
++
++
++def caption_bands(segments, dur: float) -> list:
++    """[(t0, t1, y0, y1)] da legenda ao longo do clipe."""
++    if isinstance(segments, str):
++        return [(0.0, dur) + caption_band(segments)]
++    return [(sg.get("t0", 0.0), sg.get("t1", dur)) + caption_band(sg["mode"]) for sg in segments]
++
++
+ def ass_time(t: float) -> str:
+     t = max(0.0, t)
+     cs = int(round(t * 100))
+@@ -62,18 +115,21 @@ def esc(t: str) -> str:
  
  
  # Profanity is masked in captions and hooks by default (--no-censor turns it off).
@@ -209,7 +268,7 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
  
  
  def _mask(m) -> str:
-@@ -155,6 +161,68 @@ def wrap(text: str, size: float, max_w: float, path) -> list:
+@@ -155,6 +211,68 @@ def wrap(text: str, size: float, max_w: float, path) -> list:
      return lines
  
  
@@ -278,7 +337,7 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
  def face_top_out(seg):
      """Where the top of the face lands in the 1080x1920 output (None if no face)."""
      if not isinstance(seg, dict) or "face" not in seg:
-@@ -167,8 +235,9 @@ def face_top_out(seg):
+@@ -167,8 +285,11 @@ def face_top_out(seg):
      return (fy - y) / h * 1920.0
  
  
@@ -286,11 +345,13 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
 -    """Big hook at the top of the frame, above the face. Returns (lines, size, plate_top)."""
 +def place_hook(hook: str, seg, min_top: float = 24):
 +    """Big hook at the top of the frame, above the face. Returns (lines, size, plate_top).
-+    min_top: com a arroba no canto, o hook começa abaixo dela para não cobri-la."""
++    min_top: com a arroba no canto, o hook começa abaixo dela para não cobri-la.
++    Sem espaço acima do rosto: no modo facecam a legenda fica logo abaixo da cam, então o hook vai para baixo
++    dela (no gameplay); nos outros modos, na divisão dos painéis como antes."""
      face_top = face_top_out(seg)
      limit = (face_top + 4) if face_top is not None else 700   # YuNet's face box starts at the brows
      for size in HOOK_SIZES:
-@@ -176,8 +245,8 @@ def place_hook(hook: str, seg):
+@@ -176,19 +297,22 @@ def place_hook(hook: str, seg):
          if len(hl) > 2:
              continue
          plate = len(hl) * size + 44
@@ -299,10 +360,18 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
 +        top = min(max(70, min_top), limit - plate)
 +        if top >= min_top:
              return hl, size, top
-     # no room above the face: at the seam between the panels (chest / gameplay top)
+-    # no room above the face: at the seam between the panels (chest / gameplay top)
++    under_caps = isinstance(seg, dict) and seg.get("mode") == "facecam"
++    below = caption_bottom("facecam") + 28   # topo do hook abaixo da legenda (que fica abaixo da cam)
++    # no room above the face: at the seam between the panels (chest / gameplay top), or under the captions
      for size in HOOK_SIZES:
-@@ -188,7 +257,8 @@ def place_hook(hook: str, seg):
-     return hl, HOOK_SIZES[-1], 720 - (2 * HOOK_SIZES[-1] + 44) / 2
+         hl = wrap(hook, size, HOOK_MAX_W - 76, HOOK_FONT_FILE)
+         if len(hl) <= 2:
+-            return hl, size, 720 - (len(hl) * size + 44) / 2
++            return hl, size, below if under_caps else 720 - (len(hl) * size + 44) / 2
+     hl = wrap(hook, HOOK_SIZES[-1], HOOK_MAX_W - 76, HOOK_FONT_FILE)[:2]
+-    return hl, HOOK_SIZES[-1], 720 - (2 * HOOK_SIZES[-1] + 44) / 2
++    return hl, HOOK_SIZES[-1], below if under_caps else 720 - (2 * HOOK_SIZES[-1] + 44) / 2
  
  
 -def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs: float = 2.6, censor_on=True):
@@ -311,7 +380,7 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
      global CENSOR
      CENSOR = censor_on
      mode = segments if isinstance(segments, str) else segments[0]["mode"]
-@@ -196,7 +266,8 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
+@@ -196,11 +320,11 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
      dur = clip_end - clip_start
      ws = []
      for w in words:
@@ -321,7 +390,11 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
          if e <= 0.02 or s >= dur - 0.02:
              continue
          ws.append({"s": max(0.0, s), "e": min(dur, e), "w": w["w"]})
-@@ -208,16 +279,28 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
+-    cap_y = 1265           # bottom of the caption line (safe zone: above ~1300 px)
+     lines = [
+         "[Script Info]", "ScriptType: v4.00+", "PlayResX: 1080", "PlayResY: 1920",
+         "WrapStyle: 2", "ScaledBorderAndShadow: yes", "YCbCr Matrix: TV.709", "",
+@@ -208,16 +332,28 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
          "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
          "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
          "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
@@ -352,15 +425,24 @@ index 757e9a92f18eb5cfa96a4f9ecdfd43c8c4ba7ba2..569ff78d85ffb03834afad9888d7029e
          tw = max(text_width(x, size, HOOK_FONT_FILE) for x in hl)
          pad_x, pad_y = 38, 22
          bw, bh = tw + 2 * pad_x, len(hl) * size + 2 * pad_y
-@@ -255,6 +338,8 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
+@@ -250,11 +386,15 @@ def build_ass(words, clip_start, clip_end, hook, out: Path, segments, hook_secs:
+             parts = []
+             for j, t in enumerate(texts):
+                 if j == i:
+-                    parts.append(f"{{\\1c{HIGHLIGHT}\\fscx{int(108 * scale)}\\fscy{int(108 * scale)}}}{esc(t)}"
++                    hs = int(100 * HL_SCALE * scale)
++                    parts.append(f"{{\\1c{HIGHLIGHT}\\fscx{hs}\\fscy{hs}}}{esc(t)}"
+                                  f"{{\\1c{WHITE}\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}}}")
                  else:
                      parts.append(esc(t))
++            cap_y = round(caption_bottom(mode_at(segments, s), scale))   # abaixo da cam quando o trecho tem cam
              pre = f"{{\\an2\\pos(540,{cap_y})\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}}}"
 +            glow = f"{{\\an2\\pos(540,{cap_y})\\fscx{int(100 * scale)}\\fscy{int(100 * scale)}\\blur12}}"
 +            lines.append(f"Dialogue: 0,{ass_time(s)},{ass_time(e)},CapGlow,,0,0,0,,{glow}" + " ".join(parts))
              lines.append(f"Dialogue: 1,{ass_time(s)},{ass_time(e)},Cap,,0,0,0,,{pre}" + " ".join(parts))
      write_text(out, "\n".join(lines) + "\n")
-     return {"groups": len(groups), "words": len(ws)}
+-    return {"groups": len(groups), "words": len(ws)}
++    return {"groups": len(groups), "words": len(ws), "bands": caption_bands(segments, dur)}
 diff --git a/scripts/cl_common.py b/scripts/cl_common.py
 index 83911f0ad428551490d934402a290acdc6576f18..bb17e87c378465aa9084344078d7f43305fa29cd 100644
 --- a/scripts/cl_common.py
@@ -377,10 +459,10 @@ index 83911f0ad428551490d934402a290acdc6576f18..bb17e87c378465aa9084344078d7f433
  
 diff --git a/scripts/cl_cover.py b/scripts/cl_cover.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..7028d576319206a17650bb9e4b33ac79d7e199e2
+index 0000000000000000000000000000000000000000..9448ca5db2c99de34d4203c276ef0712173d36cf
 --- /dev/null
 +++ b/scripts/cl_cover.py
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,261 @@
 +"""Capa (thumbnail 1080x1920) de cada clipe: o quadro mais forte do clipe como fundo, editado (zoom, contraste,
 +cor e vinheta), dois outros momentos do clipe em cartões inclinados com borda neon, o hook em letras grandes
 +e a identidade visual (moldura neon + arroba). Sai em <clipe>_capa.jpg, ao lado do .mp4.
@@ -477,11 +559,14 @@ index 0000000000000000000000000000000000000000..7028d576319206a17650bb9e4b33ac79
 +
 +    def region_of(i, sg):
 +        if use_mp4:
-+            # gameplay = painel de baixo (facecam) ou o quadro todo; sem hook (topo), sem legenda (y 1100-1320)
-+            y_top = 740 if sg["mode"] == "facecam" else 420
++            # gameplay = painel de baixo (facecam) ou o quadro todo; sem o hook (topo) e sem a faixa da legenda
++            # (logo abaixo da cam no modo facecam, embaixo sem cam)
++            from cl_captions import caption_band
 +            fr = frames[i]
 +            ys = lambda v: int(v / H * sh)
-+            return np.concatenate([fr[ys(y_top):ys(1100)], fr[ys(1320):ys(1880)]], axis=0)[:, 1:-1]
++            if sg["mode"] == "facecam":
++                return fr[ys(caption_band("facecam")[1] + 10):ys(1880), 1:-1]
++            return np.concatenate([fr[ys(420):ys(1100)], fr[ys(1320):ys(1880)]], axis=0)[:, 1:-1]
 +        x, y, w, h = sg["game"] if sg["mode"] == "facecam" else sg["full"]
 +        x0, y0 = int(x / W * sw), int(y / H * sh)
 +        x1, y1 = max(x0 + 4, int((x + w) / W * sw)), max(y0 + 4, int((y + h) / H * sh))
@@ -639,6 +724,129 @@ index 0000000000000000000000000000000000000000..7028d576319206a17650bb9e4b33ac79
 +    for p in pngs:
 +        p.unlink(missing_ok=True)
 +    return out
+diff --git a/scripts/cl_layout.py b/scripts/cl_layout.py
+index 78e072545c1638379b609d0a525b8fdcf4f0ade7..117260c05e5ea41e3516d2190a4d72dcf89d68b0 100644
+--- a/scripts/cl_layout.py
++++ b/scripts/cl_layout.py
+@@ -25,6 +25,11 @@ LIVE_MIN = 2.2        # min face pixel change between samples (static pictures a
+ # no mouth) and the face geometry stays the same (no head turns). Live people: 13+ and 0.2+.
+ PIC_RES = 8.0         # max aligned-face change (0-255) of a picture
+ PIC_GEO = 0.06        # max spread of landmark geometry (share of eye distance) of a picture
++# ...but only a face that MOVES on screen can be a picture filmed by a moving camera. A webcam face stays put
++# (median shift between samples 0.01-0.03 face widths): a calm streamer reading or focused on the game also
++# barely changes once aligned and was taken for a picture, so the clip lost its cam. A still picture that does
++# not move (thumbnail, paused frame) has no pixel change at all and is caught by LIVE_MIN.
++PIC_MOVE = 0.05       # min median shift of the face centre (face widths per sample) for the picture test
+ # two or more people in one camera picture (IRL, interview): a camera shot, not a webcam
+ PEOPLE_LIVE = 6.0     # min _liveness of a person in a camera shot (people: 10+, game / trailer faces: ~2-4)
+ _CANON = np.float32([[38.3, 51.7], [73.5, 51.5], [56.0, 71.7], [41.5, 92.4], [70.7, 92.2]]) * (64 / 112)
+@@ -78,6 +83,11 @@ def _picture_like(items, frames) -> bool:
+     its = sorted((f for f in items if len(f) >= 16), key=lambda f: f[0])
+     if len(its) < 4:
+         return False
++    fw = float(np.median([f[3] for f in its])) + 1e-6
++    shift = [np.hypot((b[1] + b[3] / 2) - (a[1] + a[3] / 2), (b[2] + b[4] / 2) - (a[2] + a[4] / 2)) / fw
++             for a, b in zip(its, its[1:]) if b[0] - a[0] <= 2]
++    if not shift or float(np.median(shift)) < PIC_MOVE:
++        return False   # stays put on screen: a webcam, not a picture filmed by a moving camera
+     crops, geo = [], []
+     for f in its:
+         lm = np.float32(f[6:16]).reshape(5, 2)
+@@ -96,12 +106,12 @@ def _picture_like(items, frames) -> bool:
+     return float(np.median(res)) < PIC_RES and float(np.array(geo).std(axis=0).max()) < PIC_GEO
+ 
+ 
+-def _liveness(items, frames) -> float:
++def _liveness(items, frames, picture_test: bool = True) -> float:
+     """Median pixel change of the face between samples. A real webcam face moves and blinks;
+     a face on a static picture (thumbnail, poster, paused frame) does not. A picture filmed
+     by a moving camera moves as a whole: caught by _picture_like."""
+     import cv2
+-    if _picture_like(items, frames):
++    if picture_test and _picture_like(items, frames):
+         return 0.0
+     crops = []
+     for f in sorted(items, key=lambda f: f[0]):
+@@ -128,7 +138,7 @@ def face_clusters(faces, W):
+     return clusters
+ 
+ 
+-def stable_face(faces, n_frames, W, frames=None, min_presence=0.35):
++def stable_face(faces, n_frames, W, frames=None, min_presence=0.35, picture_test=True):
+     """Cluster faces by position; the facecam is the live face that stays put."""
+     clusters = []
+     for f in sorted(faces, key=lambda f: -f[3] * f[4]):
+@@ -144,7 +154,7 @@ def stable_face(faces, n_frames, W, frames=None, min_presence=0.35):
+     for c in clusters:
+         cnt = len(c["frames"])
+         if cnt >= max(3, int(min_presence * n_frames)):
+-            if frames is not None and _liveness(c["items"], frames) < LIVE_MIN:
++            if frames is not None and _liveness(c["items"], frames, picture_test) < LIVE_MIN:
+                 continue
+             key = (cnt, c["w"])
+             if best is None or key > best[0]:
+@@ -426,12 +436,12 @@ def face_crop(face, bounds, overlays, aspect, aw, ah, x_range=None, activity=Non
+     return cands[-1][1]
+ 
+ 
+-def plan_frames(frames, faces, W, H, crowd=False) -> dict:
++def plan_frames(frames, faces, W, H, crowd=False, picture_test=True) -> dict:
+     """Layout for one stretch of video where the stream layout does not change.
+     crowd: two or more live people of similar size are in the picture (a camera shot, not a webcam)."""
+     ah, aw = frames[0].shape[:2]
+     k = W / aw  # analysis -> source scale
+-    face, presence = stable_face(faces, len(frames), aw, frames, min_presence=0.2)
++    face, presence = stable_face(faces, len(frames), aw, frames, min_presence=0.2, picture_test=picture_test)
+     cb = content_box(frames)
+     lay = {"src_w": W, "src_h": H, "face_presence": round(presence, 2), "frames_checked": len(frames)}
+     cam_rect = None
+@@ -584,9 +594,12 @@ def _people_in(cams, i0, i1, ref_w):
+     return people
+ 
+ 
+-def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None) -> dict:
++def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None, trust_prior=False) -> dict:
+     """Layout for a clip. If the stream layout changes inside the clip (scene switch: game ->
+-    just chatting, cam moved), the clip is split into segments, each with its own layout."""
++    just chatting, cam moved), the clip is split into segments, each with its own layout.
++    prior: (x, y) share of the frame where the streamer's cam sits in the other clips of this video.
++    trust_prior: a face that stays at the prior is taken as the cam without the picture test (it only has to
++    be alive: some pixel change); used to re-check a clip that came out without a cam."""
+     fps = 2.0
+     frames, times, W, H = grab_frames(video, t0, dur, fps)
+     if not frames:
+@@ -597,15 +610,16 @@ def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None
+     # streamer faces = clusters that stay in place for >= 25 % of the clip and are alive
+     # (game characters and pictures on screen do not pass both tests)
+     cams = []
+-    for c in face_clusters(faces, aw):
+-        if len(c["frames"]) >= max(4, int(0.25 * n)):
+-            c["live"] = _liveness(c["items"], frames)
+-            if c["live"] >= LIVE_MIN:
+-                cams.append(c)
+     def near_prior(c):
+         if not prior:
+             return 0
+         return int(abs(c["cx"] / aw - prior[0]) < 0.12 and abs(c["cy"] / frames[0].shape[0] - prior[1]) < 0.15)
++    for c in face_clusters(faces, aw):
++        if len(c["frames"]) >= max(4, int(0.25 * n)):
++            c["trusted"] = bool(trust_prior and near_prior(c))
++            c["live"] = _liveness(c["items"], frames, picture_test=not c["trusted"])
++            if c["live"] >= LIVE_MIN:
++                cams.append(c)
+     cams.sort(key=lambda c: (-near_prior(c), -len(c["frames"])))
+     labels = []
+     for i in range(n):
+@@ -677,7 +691,8 @@ def plan(video: Path, t0: float, dur: float, debug_path: Path = None, prior=None
+         fc = [(f[0] - sg["i0"],) + tuple(f[1:]) for f in own if sg["i0"] <= f[0] < sg["i1"]]
+         # live people of about the same size in the picture: a camera shot (IRL, interview, podcast)
+         crowd = len(_people_in(cams, sg["i0"], sg["i1"], float(np.median([f[3] for f in fc])))) if fc else 0
+-        lay = plan_frames(fr, fc, W, H, crowd >= 2)
++        trusted = sg["label"] is not None and cams[sg["label"]].get("trusted", False)
++        lay = plan_frames(fr, fc, W, H, crowd >= 2, picture_test=not trusted)
+         s0 = 0.0 if j == 0 else _refine_cut(video, t0 + sg["i0"] / fps - 0.25) - t0
+         lay["t0"] = round(max(0.0, s0), 3)
+         out.append(lay)
 diff --git a/scripts/cl_moments.py b/scripts/cl_moments.py
 index 02d879e124dc34d8366cf4c4c3ab7019ecbc4226..26f14f23da1fa271bbe3795785b4c00587dbb206 100644
 --- a/scripts/cl_moments.py
@@ -662,7 +870,7 @@ index 02d879e124dc34d8366cf4c4c3ab7019ecbc4226..26f14f23da1fa271bbe3795785b4c005
      picks = m.get("picks") or []
      if not picks:
 diff --git a/scripts/cl_render.py b/scripts/cl_render.py
-index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb54515dee2 100644
+index 39035963f0d95e98048f34fee8b08a0225925db2..b299946ff21ff3e7153b0bc618e3178791bc2a94 100644
 --- a/scripts/cl_render.py
 +++ b/scripts/cl_render.py
 @@ -9,7 +9,9 @@ from pathlib import Path
@@ -712,7 +920,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
  
  
  def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
-@@ -49,6 +73,55 @@ def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
+@@ -49,6 +73,65 @@ def align_section(job: Path, section: Path, guess_t0: float) -> tuple:
      return t0, float(nc[lag])
  
  
@@ -725,7 +933,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
 +    return int(h) * 3600 + int(m) * 60 + float(s)
 +
 +
-+def caption_sync_check(mp4: Path, ass: Path, fps: int = 25) -> dict:
++def caption_sync_check(mp4: Path, ass: Path, fps: int = 25, bands=None) -> dict:
 +    """Measure, on the FINISHED video, when the yellow word highlight actually changes, and compare
 +    with when each caption event was scheduled (= the word's start in the transcript). Catches any
 +    timestamp mix-up between the cut and the subtitle filter. Returns lag (s, + = captions late)."""
@@ -735,15 +943,25 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
 +            starts.append(_ass_secs(ln.split(",")[1]))
 +    if len(starts) < 6:
 +        return {"status": "skipped", "reason": "too few caption words"}
-+    W, H = 270, 40   # caption band (y 1140-1300 of 1080x1920) at 1/4 scale
++    # faixa da legenda em cada trecho (logo abaixo da cam no modo facecam, embaixo sem cam): lê de y0 do mais
++    # alto a y1 do mais baixo em 1/4 da escala e, em cada quadro, olha só a faixa daquele trecho
++    bands = bands or [(0.0, 1e9, 1140, 1300)]
++    ya, yb = min(b[2] for b in bands) // 4 * 4, -(-max(b[3] for b in bands) // 4) * 4
++    W, H = 270, (yb - ya) // 4
 +    raw = subprocess.run([ffmpeg(), "-v", "error", "-i", str(mp4), "-vf",
-+                          f"fps={fps},crop=1080:160:0:1140,scale={W}:{H}", "-f", "rawvideo", "-pix_fmt", "rgb24",
++                          f"fps={fps},crop=1080:{yb - ya}:0:{ya},scale={W}:{H}", "-f", "rawvideo", "-pix_fmt", "rgb24",
 +                          "pipe:1"], capture_output=True).stdout
 +    n = len(raw) // (W * H * 3)
 +    if n < fps * 3:
 +        return {"status": "skipped", "reason": "could not read frames"}
 +    f = np.frombuffer(raw[: n * W * H * 3], np.uint8).reshape(n, H, W, 3).astype(np.int16)
 +    yellow = (f[..., 0] > 200) & (f[..., 1] > 170) & (f[..., 2] < 110)        # #FFE600 highlight
++    mask = np.zeros((n, H, 1), bool)
++    for k in range(n):
++        tk = k / fps
++        b = next((b for b in bands if b[0] <= tk < b[1]), bands[-1])
++        mask[k, max(0, (b[2] - ya) // 4):max(0, (b[3] - ya) // 4)] = True
++    yellow &= mask
 +    change = np.concatenate([[0], (yellow[1:] ^ yellow[:-1]).sum((1, 2))]).astype(np.float64)
 +    change = np.maximum(0, change - np.median(change))
 +    st = np.array(starts)
@@ -768,7 +986,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
  def encoder_args(cfg: dict):
      enc = cfg.get("encoder", "libx264")
      if enc == "h264_nvenc":
-@@ -86,17 +159,108 @@ def _chain(lay: dict, src: str, dst: str) -> str:
+@@ -86,17 +169,108 @@ def _chain(lay: dict, src: str, dst: str) -> str:
      return f"[{src}]crop={w}:{h}:{x}:{y},scale={OUT_W}:{OUT_H}:flags=lanczos,setsar=1[{dst}]"
  
  
@@ -885,7 +1103,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
      return ";".join(parts)
  
  
-@@ -166,7 +330,8 @@ def manual_layout(box: str, W: int, H: int) -> dict:
+@@ -166,7 +340,8 @@ def manual_layout(box: str, W: int, H: int) -> dict:
      return seg
  
  
@@ -895,7 +1113,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
      t = Timer()
      meta = read_json(job / "job.json")
      meta.setdefault("timings", {})["render_started"] = time.time()
-@@ -177,6 +342,11 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+@@ -177,6 +352,11 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
      words = read_json(job / "transcript" / "words.json", [])
      lang = meta.get("language", "en")
      cfg = load_config()
@@ -907,7 +1125,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
      fonts = job / "fonts"
      fonts.mkdir(exist_ok=True)
      for f in FONTS.glob("*.ttf"):
-@@ -185,6 +355,12 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+@@ -185,6 +365,12 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
      clips_dir = job / "clips"
      results, todo = [], []
      picks = sorted(chk["picks"], key=lambda q: q["order"])
@@ -920,14 +1138,40 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
      # pass 1: fetch the minutes we need, sync them, plan the layout
      for p in picks:
          k = p["order"]
-@@ -248,34 +424,87 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+@@ -238,6 +424,25 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
+                 if off_prior:
+                     log(f"    clip {x['k']}: cam differs from the other clips, re-checking")
+                     x["lay"] = plan(x["section"], x["off"], x["dur"], x["cdir"] / "layout_debug.jpg", prior=best)
++            # a clip that came out with NO cam while the other clips of this video have it in the same place
++            # (calm streamer, small cam): look again for a live face right there
++            with_cam = sum(1 for x in todo if any(sg["mode"] == "facecam" and "face_center" in sg
++                                                  and abs(sg["face_center"][0] - best[0]) <= 0.08
++                                                  and abs(sg["face_center"][1] - best[1]) <= 0.12
++                                                  for sg in x["lay"]["segments"]))
++            if with_cam >= 2 and with_cam * 2 >= len(todo):
++                for x in todo:
++                    if any(sg["mode"] == "facecam" for sg in x["lay"]["segments"]):
++                        continue
++                    log(f"    clip {x['k']}: no cam found, but the other clips have it - re-checking at that spot")
++                    dbg = x["cdir"] / "layout_debug_retry.jpg"
++                    lay2 = plan(x["section"], x["off"], x["dur"], dbg, prior=best, trust_prior=True)
++                    if any(sg["mode"] == "facecam" for sg in lay2["segments"]):
++                        x["lay"] = lay2
++                        dbg.replace(x["cdir"] / "layout_debug.jpg")
++                        log(f"    clip {x['k']}: cam found ({lay2['mode']})")
++                    else:
++                        dbg.unlink(missing_ok=True)
+     # pass 2: captions + encode
+     for x in todo:
+         p, k, name, cdir, section, off, dur, conf, lay = (x[q] for q in ("p", "k", "name", "cdir", "section", "off",
+@@ -248,34 +453,87 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
              log(f"  clip {k}: layout {lay['mode']} (face in {int(lay['face_presence'] * 100)}% of frames)")
              ass = cdir / "captions.ass"
              wsel = [w for w in words if w["e"] > a and w["s"] < b]
 -            build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor)
 +            if k in tr_lines:
 +                wsel = translated_words(wsel, tr_lines[k])
-+            build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
++            cap_info = build_ass(wsel, a, b, p.get("hook", ""), ass, lay["segments"], censor_on=censor,
 +                      lead=caption_lead, brand=brand_cfg)
              mp4 = cdir / f"{name}.mp4"
              rel_ass = ass.relative_to(job).as_posix()
@@ -992,7 +1236,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
 -                    raise
 +                    sync["audio"] = {"status": "unclear", "conf": round(c_out, 2)}
 +            # part 2: each word must light up on screen at its scheduled (spoken) time
-+            sync["captions"] = caption_sync_check(mp4, ass)
++            sync["captions"] = caption_sync_check(mp4, ass, bands=cap_info.get("bands"))
 +            sa, sc_ = sync["audio"], sync["captions"]
 +            log(f"    sync: speech {sa['status']}" + (f" ({sa['drift'] * 1000:+.0f} ms)" if "drift" in sa else "")
 +                + f", captions {sc_['status']}" + (f" ({sc_['lag'] * 1000:+.0f} ms)" if "lag" in sc_ else ""))
@@ -1026,7 +1270,7 @@ index 39035963f0d95e98048f34fee8b08a0225925db2..7d379c07d1b6e945b192ae45e3e4dbb5
              log(f"    done -> {mp4}")
          except Exception as e:
              log(f"    FAILED: {str(e)[:400]}")
-@@ -324,8 +553,14 @@ def write_report(job: Path):
+@@ -324,8 +582,14 @@ def write_report(job: Path):
               f"- Total: {fmt_dur(rep['total_seconds'] or 0)}", "", "## Clips"]
      for c in clips:
          if "mp4" in c:
