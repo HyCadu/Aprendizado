@@ -5,6 +5,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
 
 from .. import theme as T
+from ..system import HANDLE_RE, brand_config, save_brand
 from ..core import AUTO_LANG, LANGS, MAX_CLIPS, TWITCH, YOUTUBE, detect_platform, lang_name, validate_link
 from ..widgets import AdaptiveBox, Icon, ReflowGrid, card, glow, glyph, icon_button, icon_font, label, set_button_enabled
 from .common import Page
@@ -168,6 +169,40 @@ class NewJob(Page):
         v4.addWidget(self.zoom)
         self.body.addWidget(self.c4)
 
+        # arroba + capa
+        c5 = card("CardFlat")
+        v5 = QVBoxLayout(c5)
+        v5.setContentsMargins(22, 20, 22, 20)
+        v5.setSpacing(10)
+        v5.addWidget(label("5. Arroba e capa", "SectionTitle"))
+        hrow = QHBoxLayout()
+        at = label("@")
+        at.setStyleSheet(f"color: {T.PURPLE}; font-size: 20px; font-weight: 800; background: transparent;")
+        hrow.addWidget(at)
+        self.handle = QLineEdit()
+        self.handle.setObjectName("Big")
+        self.handle.setPlaceholderText("seuperfil   (vazio = vídeo sem arroba)")
+        self.handle.setMaxLength(31)
+        self.handle.setClearButtonEnabled(True)
+        self.handle.textChanged.connect(self._on_handle)
+        hrow.addWidget(self.handle, 1)
+        v5.addLayout(hrow)
+        hh = QHBoxLayout()
+        self.handle_ic = Icon("info", 13, T.MUTED)
+        self.handle_hint = label("", "Dim", wrap=True)
+        hh.addWidget(self.handle_ic)
+        hh.addWidget(self.handle_hint, 1)
+        v5.addLayout(hh)
+        self.cover = QCheckBox("Criar uma capa para cada clipe")
+        self.cover.setToolTip("Imagem 1080x1920 (<clipe>_capa.jpg, ao lado do vídeo): o momento mais forte do clipe "
+                              "editado, mais dois momentos em cartões com borda neon, o título grande e a arroba.")
+        self.cover.setCursor(Qt.PointingHandCursor)
+        v5.addWidget(self.cover)
+        v5.addWidget(label("A capa usa momentos do próprio clipe: o quadro mais forte de fundo (com zoom, cor e contraste "
+                           "reforçados), outros dois momentos em cartões inclinados com borda neon e o título em letras "
+                           "grandes. Fica ao lado do .mp4 como <clipe>_capa.jpg.", "Dim", wrap=True))
+        self.body.addWidget(c5)
+
         # iniciar
         foot = AdaptiveBox(760, 14)
         fh = foot.box
@@ -203,8 +238,40 @@ class NewJob(Page):
         self.lbtns.get(last_lang if last_lang in LANGS else AUTO_LANG).setChecked(True)
         self.keep_orig.setChecked(bool(state.settings["keep_original_captions"]))
         self.zoom.setChecked(bool(state.settings["zoom_on_narration"]))
+        self.cover.setChecked(bool(state.settings["make_cover"]))
+        self._load_handle()
         self._on_lang()
         self._on_url("")
+
+    def on_show(self):
+        if not self.handle.hasFocus():
+            self._load_handle()   # pode ter mudado em Configurações
+
+    def _load_handle(self):
+        try:
+            h = brand_config().get("handle") or ""
+        except Exception:
+            h = ""
+        self.handle.setText(h.lstrip("@"))
+        self._on_handle(self.handle.text())
+
+    def _handle_ok(self) -> bool:
+        h = self.handle.text().strip()
+        return not h or bool(HANDLE_RE.match(h))
+
+    def _on_handle(self, text: str):
+        h = text.strip().lstrip("@")
+        if not h:
+            self.handle_ic.set("info", T.MUTED)
+            self.handle_hint.setText("Sem arroba: o vídeo e a capa saem só com a moldura.")
+        elif self._handle_ok():
+            self.handle_ic.set("check", T.GREEN)
+            self.handle_hint.setText(f"@{h} vai no canto superior direito do vídeo e na capa.")
+        else:
+            self.handle_ic.set("warn", T.AMBER)
+            self.handle_hint.setText("Arroba inválida: use só letras, números, ponto e _ (até 30).")
+        if hasattr(self, "start_btn"):
+            self.set_running(self.state.job_running)
 
     def lang(self) -> str:
         for code, b in self.lbtns.items():
@@ -277,9 +344,11 @@ class NewJob(Page):
 
     def set_running(self, running: bool):
         ok, _ = validate_link(self.url.text(), self.platform())
+        ok = ok and self._handle_ok()
         set_button_enabled(self.start_btn, ok and not running)
         self.start_glow.setEnabled(ok and not running)
-        self.start_btn.setToolTip("Já existe um processamento em andamento." if running else "")
+        self.start_btn.setToolTip("Já existe um processamento em andamento." if running else
+                                  "" if self._handle_ok() else "Corrija a arroba.")
 
     def _start(self):
         if self.state.job_running:
@@ -290,6 +359,17 @@ class NewJob(Page):
         if not ok:
             self.state.toast.emit(msg, "warn")
             return
+        # a arroba vai para o config.json das skills, que o render lê (vale também para os cortes automáticos)
+        try:
+            frame = bool(brand_config().get("frame", True))
+            h = save_brand(frame, self.handle.text())
+        except ValueError as e:
+            self.state.toast.emit(str(e), "warn")
+            return
+        except OSError as e:
+            self.state.toast.emit(f"Não consegui salvar a arroba: {e}", "error")
+            return
+        self.handle.setText(h.lstrip("@"))
         n = self.cgroup.checkedId()
         self.state.settings["last_platform"] = self.platform()
         self.state.settings["last_clips"] = n
@@ -301,5 +381,7 @@ class NewJob(Page):
         job["original_captions"] = self.keep_orig.isChecked() and lang != "pt"
         self.state.settings["zoom_on_narration"] = self.zoom.isChecked()
         job["zoom"] = self.zoom.isChecked()
+        self.state.settings["make_cover"] = self.cover.isChecked()
+        job["cover"] = self.cover.isChecked()
         self.state.settings.save()
         self.state.job_started.emit(job)

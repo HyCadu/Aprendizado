@@ -82,15 +82,17 @@ _thumb_cache: dict[tuple[str, float, int], QPixmap] = {}
 
 
 def clip_thumb(sheet: Path, width: int, mtime: float = 0.0) -> QPixmap:
-    """Primeiro quadro do sheet.jpg (grade 6x2 de 270x480) em 9:16."""
+    """Capa do clipe (<clipe>_capa.jpg, já em 9:16) ou o primeiro quadro do sheet.jpg (grade 6x2 de 270x480)."""
     key = (str(sheet), mtime, width)
     if key in _thumb_cache:
         return _thumb_cache[key]
     h = int(width * 16 / 9)
     pm = QPixmap(str(sheet)) if sheet.is_file() else QPixmap()
     if not pm.isNull():
-        x, y, w, hh = SHEET_CELL
-        pm = pm.copy(x, y, w, hh).scaled(width, h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        if sheet.name == "sheet.jpg":
+            x, y, w, hh = SHEET_CELL
+            pm = pm.copy(x, y, w, hh)
+        pm = pm.scaled(width, h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
     else:
         pm = QPixmap(width, h)
         pm.fill(QColor(T.SURFACE_2))

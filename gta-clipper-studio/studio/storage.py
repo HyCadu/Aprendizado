@@ -43,6 +43,7 @@ class Settings:
         "last_lang": "auto",
         "keep_original_captions": False,
         "zoom_on_narration": True,
+        "make_cover": True,
     }
 
     def __init__(self, path: Path = SETTINGS_FILE):
@@ -134,6 +135,15 @@ class Clip:
     @property
     def sheet(self) -> Path:
         return self.path.parent / "sheet.jpg"
+
+    @property
+    def cover(self) -> Path:
+        """Capa gerada pelo render: <clipe>_capa.jpg ao lado do .mp4."""
+        return self.path.with_name(self.path.stem + "_capa.jpg")
+
+    @property
+    def thumb(self) -> Path:
+        return self.cover if self.cover.is_file() else self.sheet
 
     @property
     def post_md(self) -> Path:

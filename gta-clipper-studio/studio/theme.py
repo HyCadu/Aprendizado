@@ -33,7 +33,7 @@ ICONS = {
     "info": "", "paste": "", "gpu": "", "clock": "", "rocket": "",
     "doc": "", "copy": "", "search": "", "link": "", "cut": "",
     "open": "", "volume": "", "mute": "", "chip": "", "shield": "",
-    "terminal": "", "star": "", "dot": "", "chev": "", "dash": "",
+    "terminal": "", "star": "", "dot": "", "chev": "", "dash": "", "image": "",
 }
 
 QSS = f"""

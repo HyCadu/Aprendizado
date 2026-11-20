@@ -137,7 +137,8 @@ class Settings(Page):
         bv.addLayout(hr)
         self.frame.toggled.connect(self._save_brand)
         bv.addWidget(label("A arroba fica no canto superior direito, abaixo do fio de cima. Vale para todos os "
-                           "próximos cortes (YouTube e lives), inclusive os automáticos.", "Dim", wrap=True))
+                           "próximos cortes (YouTube e lives), inclusive os automáticos, e também na capa. Dá para trocar a "
+                           "arroba direto em Novo corte.", "Dim", wrap=True))
         self.body.addWidget(bc)
 
         row_w = AdaptiveBox(820, 14)
@@ -234,6 +235,8 @@ class Settings(Page):
         state.gpu_changed.connect(self._render_gpu)
 
     def on_show(self):
+        if not self.handle.hasFocus():   # a arroba também muda pelo Novo corte
+            self.handle.setText(brand_config().get("handle") or "")
         self.state.refresh_gpu()
         self.gpu_timer.start(4000)
         if not self.state.checks:

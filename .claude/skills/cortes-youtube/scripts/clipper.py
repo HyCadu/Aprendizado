@@ -155,7 +155,8 @@ def cmd_render(args):
     try:
         meta = cl_render.render_job(job, args.cookies_from_browser, args.cookies, only, args.facecam,
                                    not args.no_censor, args.caption_lead, args.original_captions,
-                                   1.0 if args.no_zoom else args.zoom, not args.no_brand)
+                                   1.0 if args.no_zoom else args.zoom, not args.no_brand,
+                                   not args.no_cover)
     except SystemExit as e:
         log(f"  FAILED: {e}")
         return 1
@@ -233,6 +234,7 @@ def main():
     p.add_argument("--no-zoom", action="store_true", help="no zoom on strong narration")
     p.add_argument("--no-brand", action="store_true",
                    help="sem a identidade visual (moldura neon + arroba de brand.handle no config.json)")
+    p.add_argument("--no-cover", action="store_true", help="não gera a capa <clipe>_capa.jpg de cada clipe")
     p.add_argument("--caption-lead", type=float, default=0.0,
                    help="shift captions in seconds: >0 earlier (they lag the voice), <0 later "
                         "(they run ahead), e.g. --caption-lead=-0.15")

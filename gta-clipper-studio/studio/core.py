@@ -164,6 +164,7 @@ def lang_name(code: str) -> str:
 
 
 NO_ZOOM_HINT = " (sem zoom: renderize com --no-zoom)"
+NO_COVER_HINT = " (sem capa: renderize com --no-cover)"
 ORIGINAL_HINT ="; mantenha a legenda no idioma original: pule o translate e renderize com --original-captions"
 
 
@@ -200,7 +201,7 @@ def language_hint(lang: str, original_captions: bool) -> str:
 
 def build_command(claude: str, url: str, platform: str, clips: int, out_dir: Path | None,
                   lang: str = AUTO_LANG, original_captions: bool = False,
-                  zoom: bool = True) -> tuple[list[str], str]:
+                  zoom: bool = True, cover: bool = True) -> tuple[list[str], str]:
     """Mesmo prompt dos rodar_automatico.ps1 (+ dica de idioma). Retorna (argv, prompt)."""
     clips = max(1, min(int(clips), MAX_CLIPS[platform]))
     if platform == YOUTUBE:
@@ -213,6 +214,8 @@ def build_command(claude: str, url: str, platform: str, clips: int, out_dir: Pat
         default_out, extra = DEFAULT_TW_OUT, ["--add-dir", str(AI_STREAM_CLIPPER)]
     if not zoom:   # o zoom na narração forte é o padrão do render; desligado, a skill recebe --no-zoom
         prompt += NO_ZOOM_HINT
+    if not cover:  # a capa (<clipe>_capa.jpg) é padrão do render; desligada, a skill recebe --no-cover
+        prompt += NO_COVER_HINT
     out = Path(out_dir) if out_dir else default_out
     if out.resolve() != default_out.resolve():
         prompt += f' (salve o job com --out "{_safe_dir(out)}" no prepare)'

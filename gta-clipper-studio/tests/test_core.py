@@ -83,6 +83,16 @@ class LinkTests(unittest.TestCase):
         self.assertEqual(p, f"/clipar-gta-br {TW} (só 2 cortes por live)" + core.NO_ZOOM_HINT)
         self.assertTrue(storage.Settings.DEFAULTS["zoom_on_narration"])
 
+    def test_cover(self):
+        _, p = core.build_command("claude", YT, core.YOUTUBE, 2, None)
+        self.assertNotIn("--no-cover", p)  # a capa é padrão do render
+        _, p = core.build_command("claude", TW, core.TWITCH, 2, None, "pt", cover=False)
+        self.assertEqual(p, f"/clipar-gta-br {TW} (só 2 cortes por live)" + core.NO_COVER_HINT)
+        self.assertTrue(storage.Settings.DEFAULTS["make_cover"])
+        clip = storage.Clip(Path("C:/x/01_corte/01_corte.mp4"), core.YOUTUBE, Path("C:/x"))
+        self.assertEqual(clip.cover.name, "01_corte_capa.jpg")
+        self.assertEqual(clip.thumb.name, "sheet.jpg")  # sem capa no disco: usa o sheet
+
     def test_brand_config(self):
         from studio import system
         with tempfile.TemporaryDirectory() as d:

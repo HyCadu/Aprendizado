@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from cl_captions import build_ass
+from cl_cover import make_cover
 from cl_translate import load as load_translation, translated_words
 from cl_common import (FONTS, Timer, ffmpeg, ffprobe, fmt_dur, fmt_ts, lang_strings, load_config, log,
                        read_json, run, slug, video_stream, write_json, write_text)
@@ -330,7 +331,7 @@ def manual_layout(box: str, W: int, H: int) -> dict:
 
 
 def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=None, censor=True,
-               caption_lead=0.0, original_captions=False, zoom=ZOOM, brand=True) -> dict:
+               caption_lead=0.0, original_captions=False, zoom=ZOOM, brand=True, cover=True) -> dict:
     t = Timer()
     meta = read_json(job / "job.json")
     meta.setdefault("timings", {})["render_started"] = time.time()
@@ -485,7 +486,15 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
             sync["status"] = "FAIL" if "FAIL" in (sa["status"], sc_["status"]) else (
                 "ok" if sa["status"] == "ok" and sc_["status"] == "ok" else "check")
             contact_sheet(mp4, cdir / "sheet.jpg", dur)
-            pt = post_texts(p, meta, cap_lang if k in tr_lines else lang)   # crédito e tags no idioma da legenda
+            capa = None
+            if cover:
+                try:
+                    capa = make_cover(job, section, off, dur, lay, p.get("hook") or p.get("title") or "",
+                                      cdir / f"{name}_capa.jpg", zooms, brand_cfg, mp4)
+                    log(f"    capa: {capa.name}")
+                except Exception as ce:
+                    log(f"    capa: falhou ({str(ce)[:200]})")
+            pt =post_texts(p, meta, cap_lang if k in tr_lines else lang)   # crédito e tags no idioma da legenda
             write_json(cdir / "post.json", pt)
             write_text(cdir / "post.md", post_markdown(p, pt, name))
             secs = round(x["secs"] + ct(), 1)
@@ -493,7 +502,7 @@ def render_job(job: Path, cookies=None, cookies_file=None, only=None, facecam=No
                                             "sync_confidence": round(conf, 3), "zooms": zooms,
                                             "section_offset": round(off, 3), "sync": sync, "seconds": secs})
             results.append({"order": k, "name": name, "mp4": str(mp4), "sheet": str(cdir / "sheet.jpg"),
-                            "post": str(cdir / "post.md"), "start": a, "end": b, "duration": round(dur, 1),
+                            **({"cover": str(capa)} if capa else {}), "post": str(cdir / "post.md"), "start": a, "end": b, "duration": round(dur, 1),
                             "score": p.get("score"), "hook": p.get("hook"), "layout": lay["mode"], "seconds": secs,
                             "sync": sync})
             log(f"    done -> {mp4}")

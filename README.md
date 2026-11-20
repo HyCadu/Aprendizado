@@ -91,8 +91,14 @@ Studio) a legenda sai em português; no automático, cada canal pode ter `"legen
 
 **Visual dos clipes:** zoom automático nos trechos em que o streamer fala mais alto ou grita, legenda com
 contorno grosso e sombra, e identidade visual (moldura neon roxa fina no contorno do vídeo + arroba do perfil no
-canto superior direito). A arroba e a moldura ficam em **Configurações > Identidade visual** do GTA Clipper Studio
-(ou em `brand` no `~/.ai-stream-clipper/config.json`); o zoom tem uma caixa em **Novo corte**.
+canto superior direito). A arroba se digita direto em **Novo corte** (campo "Arroba e capa"; também em
+**Configurações > Identidade visual**, ou em `brand` no `~/.ai-stream-clipper/config.json`); a moldura fica em
+Configurações e o zoom tem uma caixa em **Novo corte**.
+
+**Capa de cada clipe:** junto de cada `.mp4` sai `<clipe>_capa.jpg` (1080x1920) com o momento mais forte do clipe
+de fundo (zoom, cor, contraste e vinheta), outros dois momentos em cartões inclinados com borda neon, o título em
+letras grandes e a arroba. Dá para desligar em **Novo corte** ou com `--no-cover` no render. Na **Biblioteca** a
+capa vira a miniatura do clipe e tem um botão para abri-la.
 
 Troque `LINK` pelo endereço do vídeo, por exemplo `https://www.youtube.com/watch?v=abc123`.
 Quando o Claude pedir permissão, escolha **Yes**.

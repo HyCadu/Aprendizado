@@ -159,7 +159,7 @@ class Dashboard(Page):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(6)
         img = QLabel()
-        img.setPixmap(rounded(clip_thumb(c.sheet, 126, c.mtime), 10))
+        img.setPixmap(rounded(clip_thumb(c.thumb, 126, c.mtime), 10))
         img.setFixedSize(126, 224)
         img.setToolTip(f"{c.title}\n{c.name}")
         v.addWidget(img)

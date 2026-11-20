@@ -50,7 +50,7 @@ Se a legenda é no idioma falado no vídeo, nada é traduzido; se é no outro, o
 Para cada vídeo, um de cada vez: passos 2 a 6 abaixo. Depois registre o resultado com
 `python -I REPO/cortes-youtube/novos_videos.py --marcar <link> --status ok` (ou `pulado` se nenhum
 candidato passou de nota 6, ou `erro --nota "<motivo curto>"`). No fim, um resumo: vídeo, nº de clipes,
-caminhos dos `.mp4` e `post.md`, nota de cada clipe. Nunca publique nada.
+caminhos dos `.mp4`, das capas (`_capa.jpg`) e `post.md`, nota de cada clipe. Nunca publique nada.
 
 ## 1. Entrada
 
@@ -165,7 +165,7 @@ Se mudar um corte depois, rode `check` e `translate` de novo: o render recusa `t
 
 `clipper.py render <job>` baixa só os minutos necessários (até 1440p), sincroniza com a transcrição,
 detecta facecam se houver, monta o 1080x1920, queima legendas e codifica H.264/AAC. Por clipe, em
-`<job>/clips/NN_titulo/`: `.mp4`, `post.md`, `sheet.jpg` (12 quadros), `layout_debug.jpg`.
+`<job>/clips/NN_titulo/`: `.mp4`, `NN_titulo_capa.jpg` (capa), `post.md`, `sheet.jpg` (12 quadros), `layout_debug.jpg`.
 `--only 2` refaz um clipe. Palavrões saem mascarados (P*RRA); `--no-censor` desliga.
 Com `translation.json` o log mostra `captions: translated to pt`: cada frase traduzida fica na tela no
 intervalo da frase original e as palavras acendem distribuídas nesse intervalo (não palavra a palavra com o
@@ -185,7 +185,9 @@ atrasa; use `=` com negativo, ex. `--caption-lead=-0.1`).
 Visual do render (padrão, sem precisar pedir): zoom de 12% nos trechos de narração mais forte (`--zoom 1.2` mais
 forte, `--no-zoom` desliga) e identidade visual com moldura neon roxa e arroba do perfil, lidas de `brand` em
 `~/.ai-stream-clipper/config.json` (`{"frame": true, "handle": "@perfil"}`; `--no-brand` desliga só neste render).
-Só use `--no-zoom` / `--no-brand` quando o pedido disser.
+Cada clipe ganha também uma capa `<clipe>_capa.jpg` (1080x1920): o quadro mais forte do clipe editado (zoom, cor,
+contraste, vinheta), outros dois momentos em cartões com borda neon, o hook em letras grandes e a marca
+(`--no-cover` desliga). Só use `--no-zoom` / `--no-brand` / `--no-cover` quando o pedido disser.
 
 Layouts: sem rosto (o mais comum em gameplay editado) = `gameplay`, um recorte 9:16 seguindo a ação;
 com webcam no canto = `facecam`, rosto em cima e gameplay embaixo. Webcam errada: `--facecam x:y:w:h`
