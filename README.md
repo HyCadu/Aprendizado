@@ -222,7 +222,7 @@ Para cortar sem abrir o Claude, também dá para passar o link direto no script:
 
 **Regras dos cortes:**
 
-- Até 3 clipes por live e até 5 por vídeo, conforme a duração.
+- Até 10 clipes por live ou vídeo (3 por padrão); 6 ou mais pede vídeo longo (1 h ou mais).
 - No automático: lives dos últimos 3 dias e vídeos dos últimos 7. Cada vídeo é cortado uma vez só.
 - Palavrões aparecem mascarados na legenda (P\*RRA).
 - Vídeo ou live em outro idioma: a transcrição e o tempo vêm do áudio original, e cada frase traduzida
