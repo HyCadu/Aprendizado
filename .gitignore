@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 gta-clipper-studio/build/
 gta-clipper-studio/*.exe
+# interface nova (gta-clipper-studio-v2): build, executável e segredos do YouTube nunca vão para o git
+gta-clipper-studio-v2/build/
+gta-clipper-studio-v2/*.exe
+client_secrets*.json
+token*.json
+youtube_credentials*.json
+publications.sqlite3*
